@@ -10,7 +10,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Secrets can't be referenced directly in a job-level `if:`, so map them to a
+  # step output here and gate the deploy job on it. When CF_API_TOKEN /
+  # CF_ACCOUNT_ID are unset, the deploy job is skipped (neutral, not failed)
+  # instead of erroring with "Input required and not supplied: apiToken".
+  #
+  # Backported from CI-Spatial-Web's deploy-cloudflare-pages.yml, which runs the
+  # same action without a red run. The secret names are CF_API_TOKEN /
+  # CF_ACCOUNT_ID to match that repo, so the org has one convention, not two.
+  #
+  # NOTE: this only stops the false red. No Cloudflare credentials are set on
+  # this repo, so the deploy still will not publish until someone with admin
+  # runs `gh secret set CF_API_TOKEN` and `gh secret set CF_ACCOUNT_ID` here.
+  # Until then this workflow is green-with-deploy-skipped. The build itself
+  # stays covered on every push to main by test.yml's "Typecheck + build web".
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      has_secrets: ${{ steps.check.outputs.has_secrets }}
+    steps:
+      - name: Check for Cloudflare credentials
+        id: check
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_API_TOKEN" ] && [ -n "$CF_ACCOUNT_ID" ]; then
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare Pages secrets not set — skipping deploy. Set CF_API_TOKEN and CF_ACCOUNT_ID to enable."
+          fi
+
   deploy:
+    needs: gate
+    if: ${{ needs.gate.outputs.has_secrets == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,12 +68,16 @@ jobs:
       - name: Build Web App
         run: pnpm --filter @ci-avatar/web build
 
+      # projectName was `${{ secrets.CLOUDFLARE_PAGES_PROJECT }}`, a third secret
+      # that was never set either. The project name is not a credential — it is
+      # `avatars` (→ avatars-zbe.pages.dev), declared in wrangler.toml at the
+      # repo root — so it is inlined here, as CI-Spatial-Web inlines its own.
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: avatars
           directory: apps/web/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           wranglerVersion: '3'

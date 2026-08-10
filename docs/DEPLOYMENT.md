@@ -51,9 +51,24 @@ Production URL:
 The GitHub Actions workflow deploys `apps/web/dist` on pushes to `main`.
 
 Required GitHub Secrets:
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_PAGES_PROJECT`
+- `CF_API_TOKEN`
+- `CF_ACCOUNT_ID`
+
+These are the names CI-Spatial-Web uses; both repos deploy through the same
+action, so the org keeps one convention. The Pages project name is **not** a
+secret — it is `avatars`, declared in `wrangler.toml` and inlined in the
+workflow. (Before 2026-08-10 the workflow read `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_PAGES_PROJECT`; none of the three was
+ever set, which is why every deploy since 2026-03-15 failed.)
+
+Neither credential is set on this repo today, so `pages-deploy.yml` skips its
+deploy job neutrally and reports green without publishing. To actually publish,
+someone with admin on the repo must run:
+
+```bash
+gh secret set CF_API_TOKEN  -R companionintelligence/CI-Spatial-Companion-WebXR
+gh secret set CF_ACCOUNT_ID -R companionintelligence/CI-Spatial-Companion-WebXR
+```
 
 ## Local Ollama Over The Web (Quest 3 / iPad / XREAL)
 
