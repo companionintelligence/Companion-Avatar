@@ -14,7 +14,7 @@ export interface Capabilities {
   webSpeech: boolean
 }
 
-function detectWebGL2(): boolean {
+export function detectWebGL2(): boolean {
   if (typeof document === 'undefined') return false
   try {
     const canvas = document.createElement('canvas')
