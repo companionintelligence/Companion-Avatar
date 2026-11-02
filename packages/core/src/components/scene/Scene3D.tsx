@@ -13,6 +13,7 @@ import { AvatarLightingRig } from '../avatar/AvatarLightingRig'
 import { resolveAvatarScale } from '../avatar/avatarSizing'
 import { DatacenterDiorama } from './environment/DatacenterDiorama'
 import { GraphicsFallback } from './GraphicsFallback'
+import { WebGLGate } from './WebGLGate'
 import { useRendererConfig } from './rendering/useRendererConfig'
 import { configureRenderer, createWebGLContext } from './rendering/RendererConfig'
 import type { DeviceCapabilities, RenderQuality } from './rendering/RendererConfig'
@@ -372,5 +373,11 @@ const Scene3DComponent = ({ sceneConfig, visemeService, emoteService, animationS
   )
 }
 
+const Scene3DWithWebGL = (props: Scene3DProps) => (
+  <WebGLGate>
+    <Scene3DComponent {...props} />
+  </WebGLGate>
+)
+
 // Memoize the component to prevent re-renders when services don't change
-export const Scene3D = memo(Scene3DComponent)
+export const Scene3D = memo(Scene3DWithWebGL)
