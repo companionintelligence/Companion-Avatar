@@ -7,11 +7,12 @@ import { pathToFileURL } from 'node:url'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
-import { resolveAllowedOrigin, resolveConfig } from './config.js'
+import { resolveAllowedOrigin, resolveConfig, resolveTalkConfig } from './config.js'
 import { chatRoutes } from './routes/chat.js'
 import { configRoutes } from './routes/config.js'
 import { healthRoutes } from './routes/health.js'
 import { sttRoutes } from './routes/stt.js'
+import { talkRoutes } from './routes/talk.js'
 import { ttsRoutes } from './routes/tts.js'
 
 /**
@@ -58,6 +59,7 @@ export function createApp(): Hono {
   app.route('/api', chatRoutes)
   app.route('/api', ttsRoutes)
   app.route('/api', sttRoutes)
+  app.route('/api', talkRoutes)
 
   // Report unexpected route failures. The two branches below are a line-for-line
   // copy of Hono's own default error handler (`hono/dist/hono-base.js`), down to
@@ -88,6 +90,9 @@ if (isMain) {
   installCrashHandlers()
 
   const cfg = resolveConfig()
+  // Off unless APP_TALK_ENABLED=true. When it is on, a missing or malformed talk setting stops startup
+  // here, naming the variable, rather than failing the first conversation.
+  resolveTalkConfig()
   const app = createApp()
   const { serve } = await import('@hono/node-server')
   serve({ fetch: app.fetch, port: cfg.port })

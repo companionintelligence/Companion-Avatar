@@ -61,7 +61,7 @@ export const ChatPanel = ({ messages, activationState = 'unverified' }: ChatPane
    */
   const sheetStyle = isMobile
     ? {
-        top: '5rem',
+        top: 'calc(5rem + env(safe-area-inset-top))',
         left: 0,
         right: 0,
         // Sized by what is in it, capped at 40% of the surface. A fixed-height

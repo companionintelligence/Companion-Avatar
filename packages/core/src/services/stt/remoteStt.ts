@@ -7,6 +7,8 @@
  * captured each utterance's audio and threw it away. This joins the two ends.
  */
 
+import { apiUrl } from '../../config/apiBase'
+
 export interface RemoteSttResult {
   text: string
   ok: boolean
@@ -27,7 +29,7 @@ export async function transcribeRemote(
   if (options.language) params.set('language', options.language)
 
   try {
-    const response = await fetch(`${options.url ?? '/api/stt'}?${params.toString()}`, {
+    const response = await fetch(`${options.url ?? apiUrl('/api/stt')}?${params.toString()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
       body: audio,

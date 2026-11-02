@@ -1,4 +1,5 @@
 import type { ActivationState, LLMProvider } from '../llm/config/llmConfig'
+import { apiUrl } from '../../config/apiBase'
 
 export type { ActivationState }
 
@@ -29,7 +30,7 @@ export async function fetchConnectionHealth(): Promise<ConnectionHealth> {
     throw new Error('Connection checks are unavailable in this environment')
   }
 
-  const response = await fetch('/api/health', {
+  const response = await fetch(apiUrl('/api/health'), {
     cache: 'no-store',
     headers: { accept: 'application/json' }
   })

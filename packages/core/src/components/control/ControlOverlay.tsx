@@ -9,6 +9,8 @@ import { ControlPanel } from './ControlPanel'
 import { SettingsPanel } from './SettingsPanel'
 import type { SceneActions } from '../scene/Scene3D'
 import { useXRLayout } from '../../utils/useXRLayout'
+import { describeTalkReason } from '../../services/talk/talkService'
+import { useTalkService } from '../../services/talk/useTalkService'
 
 interface ControlOverlayProps {
   config: AppConfig
@@ -18,8 +20,20 @@ interface ControlOverlayProps {
   sceneActions?: SceneActions | null
   activationState?: ActivationState
   onActivationStateChange?: (state: ActivationState) => void
+  /** Controlled open state of the panel. Leave both props out to let the overlay own the state. */
+  controlsOpen?: boolean
+  onControlsOpenChange?: (open: boolean) => void
 }
 
+
+/** Button text for each talk state. While connecting or live, the same button cancels or ends the conversation. */
+const TALK_LABELS = {
+  idle: 'Talk live',
+  connecting: 'Cancel',
+  live: 'End talk',
+  ended: 'Talk again',
+  error: 'Talk live'
+} as const
 
 export const ControlOverlay = memo(({
   config,
@@ -28,14 +42,19 @@ export const ControlOverlay = memo(({
   xrStore,
   sceneActions,
   activationState,
-  onActivationStateChange
+  onActivationStateChange,
+  controlsOpen,
+  onControlsOpenChange
 }: ControlOverlayProps) => {
-  const [isButtonsVisible, setIsButtonsVisible] = useState(true)
+  const [openState, setOpenState] = useState(true)
+  const isButtonsVisible = controlsOpen ?? openState
+  const setIsButtonsVisible = onControlsOpenChange ?? setOpenState
   const [showSettings, setShowSettings] = useState(false)
   const [xrMode, setXrMode] = useState<XRSessionMode | null>(null)
   const [xrSessionActive, setXrSessionActive] = useState(false)
   const [xrSupport, setXrSupport] = useState({ ar: false, vr: false })
   const { isXR } = useXRLayout()
+  const talk = useTalkService()
   
   const handleEnterARMode = useCallback(() => {
     if (!xrStore) return
@@ -149,6 +168,42 @@ export const ControlOverlay = memo(({
         activationState={activationState}
         onActivationStateChange={onActivationStateChange}
       />
+
+      {/* Talk live: a conversation with the companion's voice agent. Off unless the build sets VITE_TALK_ENABLED=true. */}
+      {import.meta.env.VITE_TALK_ENABLED === 'true' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(1rem + env(safe-area-inset-top))',
+            right: 'calc(1rem + env(safe-area-inset-right))',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: '0.25rem'
+          }}
+        >
+          <button
+            type="button"
+            onClick={talk.state === 'live' || talk.state === 'connecting' ? talk.stop : talk.start}
+            style={{
+              padding: '0.5rem 0.875rem',
+              borderRadius: '9999px',
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              background: 'var(--xr-glass-bg)',
+              backdropFilter: 'blur(var(--xr-glass-blur))',
+              border: '0.0625rem solid var(--xr-glass-border)',
+              color: 'var(--card-foreground)'
+            }}
+          >
+            {TALK_LABELS[talk.state]}
+          </button>
+          <span role="status" style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+            {describeTalkReason(talk.reason)}
+          </span>
+        </div>
+      )}
     </>
   )
 })

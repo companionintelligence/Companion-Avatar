@@ -10,6 +10,7 @@ import type { useVisemeService } from '../../services/visemes/useVisemeService'
 import type { useTTSService } from '../../services/tts/ttsService'
 import { AvatarModel } from './avatar/AvatarModel'
 import { AvatarLightingRig } from '../avatar/AvatarLightingRig'
+import { isNativeShell } from '../../config/nativeShell'
 import { resolveAvatarScale } from '../avatar/avatarSizing'
 import { DatacenterDiorama } from './environment/DatacenterDiorama'
 import { GraphicsFallback } from './GraphicsFallback'
@@ -277,7 +278,9 @@ const Scene3DComponent = ({ sceneConfig, visemeService, emoteService, animationS
   // The XR store is an external state container. Recreating it on every render
   // makes the parent callback fire again, which recreates the store and can
   // spiral into a maximum-update-depth loop in the canonical app.
-  const store = useMemo(() => createXRStore(), [])
+  // The emulator starts on any page served from localhost, and every native shell is. Left on, it
+  // rewrites the user agent and the layout inside the app. A shell has no WebXR to emulate anyway.
+  const store = useMemo(() => createXRStore(isNativeShell() ? { emulate: false } : undefined), [])
   const { capabilities, quality, isLoading } = useRendererConfig()
   const worldGroupRef = useRef<THREE.Group>(null)
   const recenterSceneRef = useRef<(() => void) | undefined>(undefined)

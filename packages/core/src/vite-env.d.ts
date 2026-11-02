@@ -48,8 +48,10 @@ interface ImportMetaEnv {
   readonly VITE_VAD_SILENCE_DURATION_MS?: string
   
   // Other
+  readonly VITE_API_BASE?: string
   readonly VITE_DIRECTED_MODE?: string
   readonly VITE_USE_SSL?: string
+  readonly VITE_TALK_ENABLED?: string
 }
 
 interface ImportMeta {

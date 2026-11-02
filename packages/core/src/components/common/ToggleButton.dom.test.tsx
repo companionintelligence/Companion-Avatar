@@ -22,6 +22,13 @@ describe('ToggleButton', () => {
     expect(btn.querySelector('svg')).not.toBeNull()
   })
 
+  it('clears the home indicator and the left safe area at the bottom-left', () => {
+    render(<ToggleButton isVisible={false} onToggle={() => {}} label="Controls" position="bottom-left" />)
+    const btn = screen.getByRole('button')
+    expect(btn.style.bottom).toContain('env(safe-area-inset-bottom)')
+    expect(btn.style.left).toContain('env(safe-area-inset-left)')
+  })
+
   it('invokes onToggle when clicked', async () => {
     const onToggle = vi.fn()
     render(<ToggleButton isVisible={false} onToggle={onToggle} label="Chat" position="right" />)

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		PROVISIONAL. Derived from this build's source (apps/web, packages/core), not yet checked
+		against an App Store Connect upload. Declared: chat text and text-to-speech input, both
+		sent to the owner's BFF (/api/chat, /api/tts). Not declared, because this build does not
+		send them: microphone audio (stt.remote is false, bundle shows remote:!1; add
+		NSPrivacyCollectedDataTypeAudioData if the production build sets VITE_STT_REMOTE=true),
+		crash or diagnostic data (no Sentry DSN baked in, so the SDK is tree-shaken out).
+		NSPrivacyAccessedAPITypes is empty: the App binary imports no required-reason API from
+		Apple's list, and the Capacitor and Cordova frameworks ship empty manifests.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+</dict>
+</plist>

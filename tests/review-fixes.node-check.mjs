@@ -12,7 +12,7 @@ test('onboarding mic enable relies on config state instead of directly initializ
   const sourceFile = ts.createSourceFile('App.tsx', appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 
   let handleEnableMicDeclaration = null
-  let setsMicrophoneTrue = false
+  let setsMicrophoneFromGrant = false
   let referencesInitializeVAD = false
 
   const visit = (node) => {
@@ -40,7 +40,7 @@ test('onboarding mic enable relies on config state instead of directly initializ
       node.expression.name.text === 'set'
     ) {
       const setCallText = node.getText(sourceFile)
-      setsMicrophoneTrue = /microphone:\s*true/.test(setCallText)
+      setsMicrophoneFromGrant = /microphone:\s*granted/.test(setCallText)
     }
 
     if (ts.isIdentifier(node) && node.text === 'initializeVAD') {
@@ -52,7 +52,7 @@ test('onboarding mic enable relies on config state instead of directly initializ
 
   inspectHandleEnableMic(handleEnableMicDeclaration)
 
-  assert.equal(setsMicrophoneTrue, true, 'expected handleEnableMic to set microphone: true via AppConfigState.set')
+  assert.equal(setsMicrophoneFromGrant, true, 'expected handleEnableMic to set microphone from the permission result via AppConfigState.set')
   assert.equal(referencesInitializeVAD, false, 'expected handleEnableMic to avoid direct initializeVAD calls')
 })
 

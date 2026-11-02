@@ -52,7 +52,7 @@ export const ChatInput = memo(({
         // eight controls wrap to two 44 px rows — 124 px of bar, topping out at
         // 9rem — and the input at 7.5rem was underneath it. 10.75rem leaves a
         // 28 px gap between the two, which is what the mobile capture wanted.
-        bottom: isXR ? '9rem' : isMobile ? '10.75rem' : '7.5rem',
+        bottom: `calc(${isXR ? '9rem' : isMobile ? '10.75rem' : '7.5rem'} + env(safe-area-inset-bottom))`,
         // `left: 50%` shrink-to-fits against half the screen; with an explicit
         // width that is survivable, but `maxWidth: 90%` then resolves against
         // that same half, so the input was capped at 45% of a phone screen.

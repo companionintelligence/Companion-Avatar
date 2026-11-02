@@ -9,8 +9,9 @@
  * (Montserrat, retired at tokens v0.3.0) and hardcode the retired teal
  * (#0f717a/#abd4d8) — both silently overrode the correct values
  * @ci-avatar/core/styles/globals.css had already set, since this file
- * imports after it (see main.tsx). Now just inherits font-family and
- * references var(--primary)/var(--ring) instead of a second copy of canon.
+ * imports after it (see main.tsx). The body rule takes font-family from the
+ * core token, and links reference var(--primary)/var(--ring) instead of a second
+ * copy of canon.
  */
 :root {
   line-height: 1.5;
@@ -37,6 +38,7 @@ a:hover {
 
 body {
   margin: 0;
+  font-family: var(--font-sans);
   display: flex;
   justify-content: center;
   align-items: center;

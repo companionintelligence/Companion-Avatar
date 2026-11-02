@@ -26,7 +26,10 @@ export const ToggleButton = ({
 
   const getPosition = () => {
     if (position === 'bottom-left') {
-      return { bottom: '1.25rem', left: '1.25rem' }
+      return {
+        bottom: 'calc(1.25rem + env(safe-area-inset-bottom))',
+        left: 'calc(1.25rem + env(safe-area-inset-left))'
+      }
     }
 
     const basePosition = isVisible
@@ -81,7 +84,7 @@ export const ToggleButton = ({
       aria-label={`${isVisible ? 'Hide' : 'Show'} ${label}`}
       style={{
         position: 'absolute',
-        top: position === 'bottom-left' ? 'auto' : '3%',
+        top: position === 'bottom-left' ? 'auto' : 'calc(3% + env(safe-area-inset-top))',
         ...getPosition(),
         transform: getTransform(),
         zIndex: 1000,

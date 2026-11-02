@@ -142,7 +142,7 @@ export const ControlPanel = memo(({
     <div
       style={{
         position: 'absolute',
-        bottom: isXR ? '2rem' : '1.25rem',
+        bottom: `calc(${isXR ? '2rem' : '1.25rem'} + env(safe-area-inset-bottom))`,
         // Span the surface and centre the bar inside it, rather than
         // `left: 50%` + `translateX(-50%)`.
         //
@@ -160,6 +160,7 @@ export const ControlPanel = memo(({
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
         opacity: isVisible ? 1 : 0,
+        visibility: isVisible ? 'visible' : 'hidden',
         pointerEvents: isVisible ? 'auto' : 'none'
       }}
     >

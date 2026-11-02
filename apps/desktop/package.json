@@ -1,0 +1,16 @@
+{
+  "name": "@ci-avatar/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Avatar Companion desktop shell (Tauri 2) around the web app",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:debug": "tauri build --debug --bundles app"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

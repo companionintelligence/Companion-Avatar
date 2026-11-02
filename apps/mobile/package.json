@@ -1,0 +1,23 @@
+{
+  "name": "@ci-avatar/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Avatar Companion iOS and Android shells (Capacitor 8) around the web app",
+  "scripts": {
+    "build:web": "pnpm --filter @ci-avatar/web build",
+    "sync": "cap sync",
+    "sync:android": "cap sync android",
+    "sync:ios": "cap sync ios",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

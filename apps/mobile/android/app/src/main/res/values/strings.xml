@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Avatar Companion</string>
+    <string name="title_activity_main">Avatar Companion</string>
+    <string name="package_name">computer.ci.avatar</string>
+    <string name="custom_url_scheme">computer.ci.avatar</string>
+</resources>

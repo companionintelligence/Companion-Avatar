@@ -7,11 +7,13 @@ interface FakeOptions {
   /** `null`: a browser with no `navigator.serviceWorker` at all (plain http, an old WebView). */
   serviceWorker?: RegistrationHost['navigator']['serviceWorker'] | null
   capacitor?: RegistrationHost['Capacitor']
+  /** The Tauri desktop shell, which injects `__TAURI_INTERNALS__` before any page script. */
+  tauri?: boolean
   /** Fire the `load` listener as soon as it is added, as if the page had finished loading. */
   fireLoad?: boolean
 }
 
-function fakeWindow({ readyState = 'complete', serviceWorker, capacitor, fireLoad = true }: FakeOptions = {}) {
+function fakeWindow({ readyState = 'complete', serviceWorker, capacitor, tauri = false, fireLoad = true }: FakeOptions = {}) {
   const register = vi.fn(() => Promise.resolve({} as ServiceWorkerRegistration))
   const addEventListener = vi.fn((_type: 'load', listener: () => void, _options: { once: boolean }) => {
     if (fireLoad) listener()
@@ -20,7 +22,8 @@ function fakeWindow({ readyState = 'complete', serviceWorker, capacitor, fireLoa
     navigator: serviceWorker === null ? {} : { serviceWorker: serviceWorker ?? { register } },
     document: { readyState },
     addEventListener,
-    Capacitor: capacitor
+    Capacitor: capacitor,
+    __TAURI_INTERNALS__: tauri ? {} : undefined
   }
   return { win, register, addEventListener }
 }
@@ -63,6 +66,13 @@ describe('registerServiceWorker', () => {
 
   it('does nothing inside a Capacitor shell, which would load this bundle from the app itself', () => {
     const { win, register } = fakeWindow({ capacitor: { isNativePlatform: () => true } })
+
+    expect(registerServiceWorker({ production: true, win })).toBe(false)
+    expect(register).not.toHaveBeenCalled()
+  })
+
+  it('does nothing inside the Tauri desktop shell, which would load this bundle from the app itself', () => {
+    const { win, register } = fakeWindow({ tauri: true })
 
     expect(registerServiceWorker({ production: true, win })).toBe(false)
     expect(register).not.toHaveBeenCalled()

@@ -1,0 +1,10 @@
+# Web build copied in by `cap sync`, and build output from Gradle and Xcode.
+android/app/src/main/assets/public/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+ios/App/App/public/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
