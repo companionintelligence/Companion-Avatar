@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/companionintelligence/.github/main/profile/assets/icons/avatar-companion.png" width="96" height="96" alt="Avatar Companion icon">
+</p>
+
 <h1 align="center">CI Spatial Companion</h1>
 
 <p align="center"><strong>WebXR and WebSpatial</strong></p>
