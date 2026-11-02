@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/2024_CI__Logo_Banner_Color.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <!-- viewport-fit=cover lets env(safe-area-inset-*) report the notch and home indicator in the native shells. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#041620" />
+    <meta name="color-scheme" content="dark" />
     <!-- Installable as an app: public/manifest.webmanifest has display: standalone, and the
          worker (public/sw.js, registered from src/lib/registerServiceWorker.ts) answers an
          offline launch with /offline/. apple-mobile-web-app-title is the label under the
@@ -22,6 +24,69 @@
       content="Avatar Companion — an embodied AI companion with a 3D avatar, voice interaction, and WebXR support, part of the Companion Intelligence platform."
     />
     <title>Avatar Companion</title>
+    <link rel="canonical" href="https://avatar.ci.computer/" />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Companion Intelligence" />
+    <meta property="og:title" content="Avatar Companion" />
+    <meta
+      property="og:description"
+      content="Avatar Companion — an embodied AI companion with a 3D avatar, voice interaction, and WebXR support, part of the Companion Intelligence platform."
+    />
+    <meta property="og:url" content="https://avatar.ci.computer/" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Avatar Companion" />
+    <meta
+      name="twitter:description"
+      content="Avatar Companion — an embodied AI companion with a 3D avatar, voice interaction, and WebXR support, part of the Companion Intelligence platform."
+    />
+    <!-- Structured data for search and answer engines: a data block, not a script that runs. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://ci.computer/#organization",
+          "name": "Companion Intelligence",
+          "url": "https://ci.computer/"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://avatar.ci.computer/#website",
+          "url": "https://avatar.ci.computer/",
+          "name": "Avatar Companion",
+          "description": "Avatar Companion — an embodied AI companion with a 3D avatar, voice interaction, and WebXR support, part of the Companion Intelligence platform.",
+          "inLanguage": "en",
+          "publisher": { "@id": "https://ci.computer/#organization" }
+        },
+        {
+          "@type": "WebPage",
+          "@id": "https://avatar.ci.computer/#webpage",
+          "url": "https://avatar.ci.computer/",
+          "name": "Avatar Companion",
+          "description": "Avatar Companion — an embodied AI companion with a 3D avatar, voice interaction, and WebXR support, part of the Companion Intelligence platform.",
+          "inLanguage": "en",
+          "isPartOf": { "@id": "https://avatar.ci.computer/#website" },
+          "about": { "@id": "https://avatar.ci.computer/#app" },
+          "publisher": { "@id": "https://ci.computer/#organization" }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://avatar.ci.computer/#app",
+          "name": "Avatar Companion",
+          "url": "https://avatar.ci.computer/",
+          "description": "Avatar Companion — an embodied AI companion with a 3D avatar, voice interaction, and WebXR support, part of the Companion Intelligence platform.",
+          "applicationCategory": "UtilitiesApplication",
+          "operatingSystem": "Any (web browser)",
+          "image": "https://avatar.ci.computer/icons/icon-512.png",
+          "inLanguage": "en",
+          "publisher": { "@id": "https://ci.computer/#organization" }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

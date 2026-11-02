@@ -1,0 +1,13 @@
+# Avatar Companion
+
+> Avatar Companion is an embodied AI companion: a 3D avatar you talk to by text or voice, with WebXR support for headsets. It is part of the Companion Intelligence platform (https://ci.computer/).
+
+Chat and voice use the model backend the site is set up with: an offline script that needs no server, Ollama, a self-hosted proxy, an in-browser model, or a cloud API. Voice asks for microphone access on first load. For help, write to support@ci.computer.
+
+## Pages
+
+- [Avatar Companion](https://avatar.ci.computer/): the app, with the 3D avatar, chat, voice and WebXR sessions
+
+## Optional
+
+- [Companion Intelligence](https://ci.computer/): the platform this companion belongs to
