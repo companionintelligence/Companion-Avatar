@@ -15,6 +15,8 @@ export interface RegistrationHost {
   addEventListener: (type: 'load', listener: () => void, options: { once: boolean }) => void
   /** Injected by the Capacitor native shells before any page script runs. */
   Capacitor?: { isNativePlatform?: () => boolean }
+  /** Injected by the Tauri desktop shell before any page script runs. */
+  __TAURI_INTERNALS__?: unknown
 }
 
 /** Not worth interrupting the visitor for: the app is an ordinary web page without the worker. */
@@ -33,9 +35,9 @@ function warn(err: unknown) {
  *     localhost. A plain-http LAN address has none, but the app needs a secure context
  *     too (WebGPU is limited to one), so there the page does not start, with or without
  *     a worker; the guard is for browsers and WebViews with no worker support at all;
- *   - inside a Capacitor shell. None exists for this app today; the guard keeps a future
- *     one, which would load this same bundle from the app itself, from getting a worker
- *     between its WebView and its own files.
+ *   - inside a native or desktop shell: a Capacitor app (window.Capacitor) or the Tauri
+ *     desktop app (window.__TAURI_INTERNALS__). Each loads this same bundle from the app
+ *     itself, and a worker there would sit between the WebView and its own files.
  *
  * It catches its own errors and never throws, so the registration can no longer be what
  * stops the app from starting: main.tsx calls it before the app is mounted, the app works
@@ -53,6 +55,7 @@ export function registerServiceWorker({
     const serviceWorker = win.navigator.serviceWorker
     if (!serviceWorker) return false
     if (win.Capacitor?.isNativePlatform?.()) return false
+    if (win.__TAURI_INTERNALS__) return false
 
     const register = () => {
       try {

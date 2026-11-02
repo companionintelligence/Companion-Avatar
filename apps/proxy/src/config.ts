@@ -136,3 +136,97 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     allowedOrigins: parseAllowedOrigins(env.APP_ALLOWED_ORIGINS)
   }
 }
+
+/**
+ * Longest a live conversation may run, whatever APP_TALK_MAX_SECONDS says. The character agent caps it the same way on
+ * its side, so a larger value here would only be clipped there.
+ */
+export const TALK_HARD_MAX_SECONDS = 300
+
+/** Longest instructions the character agent accepts in its job metadata. */
+export const TALK_MAX_INSTRUCTIONS = 12_000
+
+/**
+ * Live talk: a visitor's microphone joins a LiveKit room with the character agent (routes/talk.ts). Read only when
+ * APP_TALK_ENABLED is exactly `true`, and off by default. `livekitApiSecret` signs the join tokens, so it must never
+ * reach a response or a log.
+ */
+export interface TalkConfig {
+  livekitUrl: string
+  livekitApiKey: string
+  livekitApiSecret: string
+  /** The ElevenLabs voice the agent speaks with (APP_TALK_VOICE_ID). */
+  voiceId: string
+  /** The agent name it is dispatched by (APP_TALK_AGENT_NAME). */
+  agentName: string
+  /** Conversation length the agent is told, in seconds: APP_TALK_MAX_SECONDS, capped at TALK_HARD_MAX_SECONDS. */
+  maxSeconds: number
+  /** Tokens admitted per five-minute window (APP_TALK_MAX_CONCURRENT). Approximate; see routes/talk.ts. */
+  maxConcurrent: number
+  /** Replaces the built-in companion instructions when set (APP_TALK_INSTRUCTIONS). */
+  instructions: string | null
+}
+
+const TALK_REQUIRED = ['APP_LIVEKIT_URL', 'APP_LIVEKIT_API_KEY', 'APP_LIVEKIT_API_SECRET', 'APP_TALK_VOICE_ID'] as const
+
+/**
+ * Read the talk settings, or return null when talk is off. Once it is on, every problem throws an error that names the
+ * variable and never its value. server.ts calls this at startup, so a bad deployment is refused there rather than at
+ * the first conversation.
+ */
+export function resolveTalkConfig(env: NodeJS.ProcessEnv = process.env): TalkConfig | null {
+  if (env.APP_TALK_ENABLED !== 'true') return null
+
+  const read = (name: string) => (env[name] ?? '').trim()
+
+  const missing = TALK_REQUIRED.filter((name) => !read(name))
+  if (missing.length) throw new Error(`APP_TALK_ENABLED=true needs ${missing.join(', ')}`)
+
+  const livekitUrl = stripTrailingSlash(read('APP_LIVEKIT_URL'))
+  if (!isWssUrl(livekitUrl)) throw new Error('APP_LIVEKIT_URL must be a wss:// URL')
+
+  const voiceId = read('APP_TALK_VOICE_ID')
+  if (!/^[A-Za-z0-9_-]{4,64}$/.test(voiceId)) {
+    throw new Error('APP_TALK_VOICE_ID must be 4 to 64 letters, digits, "_" or "-"')
+  }
+
+  const agentName = read('APP_TALK_AGENT_NAME') || 'ftv-character'
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(agentName)) {
+    throw new Error('APP_TALK_AGENT_NAME must be 1 to 64 letters, digits, "_" or "-"')
+  }
+
+  const instructions = read('APP_TALK_INSTRUCTIONS')
+  if (instructions.length > TALK_MAX_INSTRUCTIONS) {
+    throw new Error(`APP_TALK_INSTRUCTIONS must be at most ${TALK_MAX_INSTRUCTIONS} characters`)
+  }
+
+  return {
+    livekitUrl,
+    livekitApiKey: read('APP_LIVEKIT_API_KEY'),
+    livekitApiSecret: read('APP_LIVEKIT_API_SECRET'),
+    voiceId,
+    agentName,
+    maxSeconds: Math.min(
+      wholeNumber(read('APP_TALK_MAX_SECONDS'), 180, 'APP_TALK_MAX_SECONDS', 10),
+      TALK_HARD_MAX_SECONDS
+    ),
+    maxConcurrent: wholeNumber(read('APP_TALK_MAX_CONCURRENT'), 2, 'APP_TALK_MAX_CONCURRENT', 1),
+    instructions: instructions || null
+  }
+}
+
+/** A whole number from an env value, or `fallback` when it is unset. Throws, naming `name`, when it is below `min`. */
+function wholeNumber(raw: string, fallback: number, name: string, min: number): number {
+  if (!raw) return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < min) throw new Error(`${name} must be a whole number of at least ${min}`)
+  return n
+}
+
+function isWssUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'wss:'
+  } catch {
+    return false
+  }
+}

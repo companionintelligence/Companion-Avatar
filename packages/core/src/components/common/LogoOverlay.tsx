@@ -7,7 +7,7 @@ export const LogoOverlay = ({ logoSrc = '/assets/2024_CI__Logo_Banner_Color.svg'
     <div
       style={{
         position: 'absolute',
-        top: 0,
+        top: 'env(safe-area-inset-top)',
         left: 0,
         right: 0,
         zIndex: 1002,

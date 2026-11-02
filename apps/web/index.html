@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/2024_CI__Logo_Banner_Color.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets env(safe-area-inset-*) report the notch and home indicator in the native shells. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#041620" />
     <!-- Installable as an app: public/manifest.webmanifest has display: standalone, and the
          worker (public/sw.js, registered from src/lib/registerServiceWorker.ts) answers an

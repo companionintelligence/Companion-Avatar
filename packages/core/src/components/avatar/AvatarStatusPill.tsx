@@ -12,6 +12,8 @@ export interface AvatarStatusPillProps {
   engineWarning?: string | null
   loadingLabel?: string
   loadingPct?: number
+  /** Draw the live waveform while listening or speaking. Turn it off where the pill has to share a narrow row. */
+  showWaveform?: boolean
   style?: CSSProperties
 }
 
@@ -38,6 +40,7 @@ export function AvatarStatusPill({
   engineWarning,
   loadingLabel,
   loadingPct,
+  showWaveform = true,
   style
 }: AvatarStatusPillProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -145,7 +148,7 @@ export function AvatarStatusPill({
           </span>
         )}
       </span>
-      {(status === 'listening' || status === 'speaking') && (
+      {showWaveform && (status === 'listening' || status === 'speaking') && (
         <canvas ref={canvasRef} width={64} height={20} aria-hidden style={{ display: 'block', opacity: 0.9 }} />
       )}
       {status !== 'idle' && status !== 'loading' && (

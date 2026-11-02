@@ -9,6 +9,7 @@ import { mark as markLatency } from '../telemetry/latency'
 import { cleanText } from './textUtils'
 import { createSyntheticSpeechWav } from './syntheticSpeech'
 import { type TTSConfig, type WhisperData, defaultTTSConfig } from './ttsConfig'
+import { apiUrl } from '../../config/apiBase'
 
 // Workerized TTS using vits-web library
 const createTTSWorker = (): Worker => {
@@ -278,8 +279,8 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
   const generateRemoteAudio = useCallback(
     async (message: QueuedMessage) => {
       // Same-origin BFF route. `config.url` may override for non-standard mounts,
-      // but the default is the relative /api/tts so no key/host is needed.
-      const url = config.url && config.url.startsWith('/') ? config.url : '/api/tts'
+      // but the default is /api/tts, prefixed with VITE_API_BASE in a shell build.
+      const url = config.url && config.url.startsWith('/') ? apiUrl(config.url) : apiUrl('/api/tts')
 
       const requestBody = {
         text: message.text,
@@ -316,7 +317,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
    */
   const generateTimedAudio = useCallback(
     async (message: QueuedMessage) => {
-      const response = await fetch('/api/tts/timed', {
+      const response = await fetch(apiUrl('/api/tts/timed'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: message.text, voice: config.voice, format: 'wav' })

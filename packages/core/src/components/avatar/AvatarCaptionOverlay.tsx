@@ -19,7 +19,7 @@ export function AvatarCaptionOverlay({ text, visible = true, speaker = 'avatar',
       style={{
         position: 'absolute',
         left: '50%',
-        bottom: '5.5rem',
+        bottom: 'calc(5.5rem + env(safe-area-inset-bottom))',
         transform: 'translateX(-50%)',
         width: 'min(42rem, calc(100% - 2rem))',
         padding: '0.65rem 0.9rem',

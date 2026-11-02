@@ -29,6 +29,7 @@ import type { useEmoteService } from '../../../services/emote/useEmoteService'
 import type { useVisemeService } from '../../../services/visemes/useVisemeService'
 import type { useTTSService } from '../../../services/tts/ttsService'
 import type { AnimationClip } from '../../../services/animation/animationTypes'
+import { talkAnalyser } from '../../../services/talk/talkService'
 import { AudioLipSync } from '../../../services/visemes/audioLipSync'
 import { PhonemeTimingEngine, blendAudioAndText } from '../../../services/visemes/phonemeTiming'
 import { ARKIT_LIP_SYNC_TARGETS, type VisemeWeights } from '../../../services/visemes/visemeTable'
@@ -660,9 +661,9 @@ const AvatarModelComponent = ({
     const compositor = compositorRef.current
     compositor.begin()
 
-    // 1. Audio-Driven Lip Sync
+    // 1. Audio-Driven Lip Sync: the TTS voice, or a live talk reply (talkAnalyser is null otherwise)
     const liveTtsService = ttsServiceRef.current
-    const analyser = liveTtsService?.actions.getAnalyser()
+    const analyser = liveTtsService?.actions.getAnalyser() ?? talkAnalyser()
     if (analyser) {
       if (!lipSyncRef.current || (lipSyncRef.current as unknown as { analyser: AnalyserNode }).analyser !== analyser) {
         lipSyncRef.current = new AudioLipSync(analyser)

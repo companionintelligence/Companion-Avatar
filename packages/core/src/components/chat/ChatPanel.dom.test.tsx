@@ -37,8 +37,9 @@ describe('ChatPanel', () => {
     const panel = container.firstElementChild as HTMLElement
     expect(panel.style.left).toBe('0px')
     expect(panel.style.right).toBe('0px')
-    // Clear of the logo overlay, which is centred at the top of the surface.
-    expect(panel.style.top).toBe('5rem')
+    // Clear of the logo overlay, which is centred at the top of the surface, and of the
+    // status bar and Dynamic Island above it on an iPhone.
+    expect(panel.style.top).toBe('calc(5rem + env(safe-area-inset-top))')
     // A sheet is bounded by height, not by width — and sized by its content up
     // to that bound, so an empty log does not park 40% of the screen over the
     // avatar's face.

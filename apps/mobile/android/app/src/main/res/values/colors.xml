@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand navy from the web theme-color. Used for the window, the system bars and the splash. -->
+    <color name="ci_navy">#041620</color>
+</resources>

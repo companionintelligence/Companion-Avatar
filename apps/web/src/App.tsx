@@ -40,6 +40,18 @@ const config = {
   llm: defaultLLMConfig
 }
 
+// Opens the microphone once, so the OS permission prompt appears from the Enable Mic tap. The
+// stream is released at once: the voice pipeline opens its own later. False if declined or no mic.
+async function requestMicrophone(): Promise<boolean> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    stream.getTracks().forEach((track) => track.stop())
+    return true
+  } catch {
+    return false
+  }
+}
+
 // ?env=datacenter-1970s opts into the 1970s research-datacenter environment around the
 // avatar (see @ci-avatar/core's DatacenterDiorama). Default stays the plain studio view.
 function resolveEnvironmentOverride(): EnvironmentPreset | undefined {
@@ -50,7 +62,7 @@ function resolveEnvironmentOverride(): EnvironmentPreset | undefined {
 }
 
 export const App = () => {
-  useResponsiveLayout()
+  const { isMobile } = useResponsiveLayout()
 
   const activeSceneConfig = useMemo(() => {
     const environment = resolveEnvironmentOverride()
@@ -59,6 +71,11 @@ export const App = () => {
 
   const xrStore = useRef<XRStore | null>(null)
   const [appState, setAppState] = useSimpleStore(AppConfigState)
+  // Phones start with the controls collapsed, so the voice status pill has room beside the Controls toggle. The
+  // open control bar covers that corner at every width, so the pill hides while the bar is open. Once the user
+  // toggles the bar, their choice wins over the default.
+  const [controlsOverride, setControlsOverride] = useState<boolean | null>(null)
+  const controlsOpen = controlsOverride ?? !isMobile
   const [llmSettings] = useSimpleStore(LLMSettingsState)
   const [ttsSettings] = useSimpleStore(TTSSettingsState)
   const [sttSettings] = useSimpleStore(STTSettingsState)
@@ -166,9 +183,13 @@ export const App = () => {
   }, [])
 
   const handleEnableMic = useCallback(() => {
-    AppConfigState.set((prev) => ({ ...prev, microphone: true }))
-    setShowOnboarding(false)
-    rememberOnboarded()
+    // Ask from this tap, so the permission prompt answers the button. A declined prompt still opens
+    // the app, on text chat with the microphone off.
+    void requestMicrophone().then((granted) => {
+      AppConfigState.set((prev) => ({ ...prev, microphone: granted }))
+      setShowOnboarding(false)
+      rememberOnboarded()
+    })
   }, [])
 
   const handleSkipOnboarding = useCallback(() => {
@@ -194,6 +215,8 @@ export const App = () => {
           status={voiceStatus}
           analyser={voiceAnalyser}
           micError={!agent.state.sttAllowed ? 'Microphone access is unavailable' : null}
+          showWaveform={!isMobile}
+          style={controlsOpen ? { display: 'none' } : { left: 'calc(10rem + env(safe-area-inset-left))', bottom: 'calc(1.25rem + env(safe-area-inset-bottom))', maxWidth: 'calc(100% - 10rem - 1.25rem)' }}
           onPillClick={() => {
             agent.actions.toggleMicrophone(true)
             agent.actions.startVADListening()
@@ -218,6 +241,8 @@ export const App = () => {
           xrStore={xrStore.current}
           sceneActions={sceneActions}
           activationState={activationState}
+          controlsOpen={controlsOpen}
+          onControlsOpenChange={setControlsOverride}
           onActivationStateChange={setActivationState}
         />
         <ChatPanel

@@ -61,6 +61,12 @@ export type { ConversationMessage, ConversationState } from './services/conversa
 export { useAgent } from './services/useAgent'
 export type { AgentService, AgentConfig, AgentCallbacks } from './services/useAgent'
 
+// Services - Talk live (the LiveKit character agent; off unless VITE_TALK_ENABLED=true)
+export { TalkError, describeTalkReason, startTalk, stopTalk, talkAnalyser } from './services/talk/talkService'
+export type { TalkReason, TalkSnapshot, TalkState } from './services/talk/talkService'
+export { useTalkService } from './services/talk/useTalkService'
+export type { TalkControls } from './services/talk/useTalkService'
+
 // Components - Scene
 export { Scene3D } from './components/scene/Scene3D'
 export { Viewport3D } from './components/scene/Viewport3D'
@@ -154,6 +160,7 @@ export { useResponsiveLayout } from './app/layoutService'
 
 // Runtime configuration
 export { loadRuntimeConfig, __resetRuntimeConfigCache } from './config/runtimeConfig'
+export { apiUrl } from './config/apiBase'
 export { resolveSTTConfig, resolveTTSConfig } from './config/appConfigService'
 export { transcribeRemote } from './services/stt/remoteStt'
 export { getAudioGraph, resumeAudioGraph, setVoicePosition } from './services/tts/audioGraph'

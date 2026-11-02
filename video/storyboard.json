@@ -296,9 +296,6 @@
                 "wait": 2500
               },
               {
-                "click": "button[aria-label=\"Hide Controls\"]"
-              },
-              {
                 "click": "button[aria-label=\"Hide Chat\"]"
               },
               {
@@ -543,9 +540,6 @@
               },
               {
                 "wait": 22000
-              },
-              {
-                "click": "button[aria-label=\"Hide Controls\"]"
               },
               {
                 "click": "button[aria-label=\"Hide Chat\"]"

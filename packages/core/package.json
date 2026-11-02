@@ -27,6 +27,7 @@
     "@react-three/postprocessing": "^3.0.4",
     "@react-three/xr": "^6.6.20",
     "@ricky0123/vad-web": "^0.0.30",
+    "livekit-client": "2.23.0",
     "lucide-react": "^1.23.0",
     "ollama": "^0.6.3",
     "postprocessing": "^6.38.2",
@@ -39,11 +40,11 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.182.0",
+    "@webspatial/react-sdk": "^1.1.0",
     "eslint": "^9.39.2",
     "typescript": "^5.8.3",
     "vite": "^7.3.1",
-    "vitest": "^4.1.9",
-    "@webspatial/react-sdk": "^1.1.0"
+    "vitest": "^4.1.9"
   },
   "peerDependencies": {
     "react": "^19.0.0",

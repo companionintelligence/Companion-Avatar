@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
 export const useResponsiveLayout = (breakpoint: number = 1000) => {
-  const [isMobile, setIsMobile] = useState(false)
+  // Read the width on the first render, so a phone does not paint the desktop layout for one frame.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= breakpoint)
 
   useEffect(() => {
     const checkScreenSize = () => {

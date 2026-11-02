@@ -1,4 +1,5 @@
 import { getSystemPrompt } from "./systemPrompt"
+import { apiUrl } from '../../../config/apiBase'
 
 export const SYSTEM_PROMPT = getSystemPrompt()
 
@@ -61,6 +62,6 @@ export interface LLMConfig {
     openai_api_key: import.meta.env.VITE_LLM_OPENAI_API_KEY || '',
     openai_api_url: import.meta.env.VITE_LLM_OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions',
     openai_model: import.meta.env.VITE_LLM_OPENAI_MODEL || 'gpt-3.5-turbo',
-    proxy_url: import.meta.env.VITE_LLM_PROXY_URL || '/api/chat',
+    proxy_url: import.meta.env.VITE_LLM_PROXY_URL || apiUrl('/api/chat'),
     proxy_model: import.meta.env.VITE_LLM_PROXY_MODEL || ''
   }
