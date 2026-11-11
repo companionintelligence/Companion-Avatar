@@ -90,6 +90,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- three r182's WebGPU build reads self.GPUShaderStage while its module loads. Browsers
+         only define that in a secure context (HTTPS or localhost), so on a plain-HTTP address,
+         which is what a Hub's local install hands out, the import threw and the page stayed
+         blank. three r183 guards this itself (mrdoob/three.js#32539); remove this script once
+         the workspace is on r183 or later. A classic script runs before any module chunk. -->
+    <script>
+      if (typeof self !== 'undefined' && !self.GPUShaderStage) {
+        self.GPUShaderStage = { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
