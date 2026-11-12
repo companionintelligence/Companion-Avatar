@@ -12,12 +12,19 @@ import { expect, type Page } from '@playwright/test'
  * We force script mode defensively via window.__APP_CONFIG__ (honored synchronously by
  * loadRuntimeConfig before first render) and clear any persisted LLM override, so the
  * suite is hermetic regardless of the developer's local settings.
+ *
+ * Script mode alone is not enough. A session starts Unverified, and while it is
+ * Unverified the app answers every turn with one canned "I am not connected yet" reply
+ * and never reaches the directed responses (processUserInput in llmService.ts). So
+ * bootApp() leaves the onboarding overlay up and clicks its "Skip", which is how a
+ * visitor enters the demo: in script mode it makes the session Demo-only
+ * (handleSkipOnboarding in apps/web/src/App.tsx). bootApp() then asserts Demo-only.
  */
 
 export const DIRECTED_SCRIPT_INIT = `
   try { localStorage.removeItem('ci_avatar_llm_overrides') } catch {}
-  // Skip the mic onboarding modal so the chat input is immediately interactive.
-  try { localStorage.setItem('ci_avatar_onboarded', 'true') } catch {}
+  // Show the onboarding overlay: bootApp() clicks its "Skip" to make the session Demo-only.
+  try { localStorage.removeItem('ci_avatar_onboarded') } catch {}
   window.__APP_CONFIG__ = { llm: { llm_provider: 'script' } };
 `
 
@@ -28,7 +35,11 @@ export interface BootedApp {
   errors: string[]
 }
 
-/** Boot the real app in script mode and wait for the avatar canvas to come up. */
+/**
+ * Boot the real app in script mode, wait for the avatar canvas to come up, and skip
+ * onboarding so the session is Demo-only (see the top of this file). Fails the test if
+ * the session does not become Demo-only.
+ */
 export async function bootApp(page: Page): Promise<BootedApp> {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
@@ -39,6 +50,18 @@ export async function bootApp(page: Page): Promise<BootedApp> {
   // App shell + 3D canvas present (same readiness gate as tests/agent.spec.ts).
   await page.waitForSelector('.app-container, div[class*="min-h-screen"]', { timeout: 45_000 })
   await page.waitForSelector('canvas', { timeout: 45_000 })
+
+  // "Skip", not "Enable Mic": Enable Mic leaves the session Unverified and turns the
+  // microphone on, which makes the chat input read-only.
+  const skip = page.getByRole('button', { name: 'Skip', exact: true })
+  await skip.click({ timeout: 45_000 })
+  await expect(skip, 'the onboarding overlay did not close after "Skip"').toBeHidden()
+
+  // The chat log's status names the session.
+  await expect(
+    page.getByRole('status', { name: 'Session: Demo-only', exact: true }),
+    'the session is not Demo-only, so every turn would get the "not connected" reply'
+  ).toBeVisible()
 
   // Give the avatar its greet→idle startup a beat to begin animating.
   await page.waitForTimeout(2500)
