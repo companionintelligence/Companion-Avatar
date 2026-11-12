@@ -45,6 +45,28 @@ export async function bootApp(page: Page): Promise<BootedApp> {
   return { errors }
 }
 
+/** One trigger group of directed-responses.json (see llmDirected.ts). */
+export interface DirectedTriggerGroup {
+  triggers: string[]
+  responses: { id: string; response: string }[]
+}
+
+/**
+ * Serve `groups` ahead of the stock directed-responses catalog for this page. The
+ * directed adapter looks for an exact trigger match in every group before it tries
+ * partial matches, and takes the first group that matches, so a message equal to one
+ * of these triggers gets one of these replies. Call it before bootApp(): the app
+ * fetches the catalog once and caches it.
+ */
+export async function serveDirectedReplies(page: Page, groups: DirectedTriggerGroup[]): Promise<void> {
+  await page.route('**/assets/directed-responses.json', async (route) => {
+    const catalog = (await (await route.fetch()).json()) as { triggers: unknown[] }
+    // Fulfill with `json` alone, not the fetched response, so the stock catalog's
+    // Content-Length header does not go out with the longer body.
+    await route.fulfill({ json: { ...catalog, triggers: [...groups, ...catalog.triggers] } })
+  })
+}
+
 /** Number of assistant reply bubbles currently rendered in the chat log. */
 export async function assistantBubbleCount(page: Page): Promise<number> {
   // ChatBubble labels the assistant turn with the literal text "Assistant".
@@ -90,6 +112,29 @@ export async function latestAssistantReply(page: Page): Promise<string> {
   return ((await assistantReplies(page).last().textContent()) ?? '').trim()
 }
 
+/** Text of every assistant reply, oldest first, one reply per line. */
+export async function assistantTranscript(page: Page): Promise<string> {
+  return (await assistantReplies(page).allTextContents()).map((text) => text.trim()).join('\n')
+}
+
+/**
+ * Send a turn and wait for a NEW assistant bubble to appear, but not for the reply to
+ * finish streaming. Only a barge-in wants that (see bargeIn()); every other turn
+ * should go through sendAndAwaitReply().
+ */
+export async function sendAndAwaitReplyStart(page: Page, message: string, timeout = 30_000): Promise<void> {
+  const before = await assistantBubbleCount(page)
+  await sendTurn(page, message)
+
+  await expect
+    .poll(async () => assistantBubbleCount(page), {
+      timeout,
+      intervals: [100],
+      message: `no new assistant reply appeared after sending "${message}"`
+    })
+    .toBeGreaterThan(before)
+}
+
 /**
  * Wait for the newest assistant reply to settle: it has stopped streaming and its text
  * has held still for SETTLE_MS. Returns that text.
@@ -127,17 +172,32 @@ export async function awaitSettledReply(page: Page, timeout = 30_000): Promise<s
  */
 export async function sendAndAwaitReply(page: Page, message: string, timeout = 30_000): Promise<string> {
   const deadline = Date.now() + timeout
-  const before = await assistantBubbleCount(page)
-  await sendTurn(page, message)
-
-  await expect
-    .poll(async () => assistantBubbleCount(page), {
-      timeout,
-      message: `no new assistant reply appeared after sending "${message}"`
-    })
-    .toBeGreaterThan(before)
-
+  await sendAndAwaitReplyStart(page, message, timeout)
   return awaitSettledReply(page, remaining(deadline))
+}
+
+/**
+ * Barge in on the reply that is streaming now: send `message` before that reply
+ * finishes, then wait for the chat to settle. Call it right after
+ * sendAndAwaitReplyStart(). If the reply has already finished, `message` would be an
+ * ordinary turn, so that fails the test instead of passing as a barge-in. Returns
+ * assistantTranscript() once the chat has settled.
+ *
+ * Assert on the transcript, not on the bubble count. The interrupted reply never gets
+ * its final fragment, so its bubble keeps STREAMING_MARKER, and useConversationService
+ * streams the answer to the barge-in into that bubble rather than a new one.
+ */
+export async function bargeIn(page: Page, message: string, timeout = 30_000): Promise<string> {
+  const deadline = Date.now() + timeout
+  const interrupted = await latestAssistantReply(page)
+  expect(
+    interrupted.endsWith(STREAMING_MARKER),
+    `the reply finished streaming before "${message}" was sent, so it would not be a barge-in`
+  ).toBe(true)
+
+  await sendTurn(page, message)
+  await awaitSettledReply(page, remaining(deadline))
+  return assistantTranscript(page)
 }
 
 /**
