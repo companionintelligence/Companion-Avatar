@@ -14,12 +14,15 @@
 #
 # Multi-arch: .github/workflows/publish-proxy.yml publishes this image for
 # linux/amd64 and linux/arm64, so arm64 Hubs can run the sidecar. Every base
-# image below is published for both. Everything this image runs at build time
-# (the workspace install, tsc, the production `deno install`) produces plain
-# JavaScript, so all of it runs on the builder's own platform
-# ($BUILDPLATFORM), and the runtime stage only copies that output onto the
-# target platform's Deno image. A cross-build therefore emulates nothing, and
-# both architectures get the same dependency tree from one resolution.
+# image below is published for both. The runtime image receives only plain
+# JavaScript: the proxy's tsc output and its production node_modules
+# (`deno install --prod`, checked below for anything built for one CPU). So
+# every RUN step runs on the builder's own platform ($BUILDPLATFORM), and the
+# runtime stage only copies that output onto the target platform's Deno image.
+# A cross-build therefore emulates nothing, and both architectures get the
+# same dependency tree from one resolution. The build stage's workspace install
+# does fetch native build tools (esbuild, rollup) for the builder, which is
+# where they run; none of them reach the runtime image.
 
 # ---- deno binary for the build stage ----
 # Official "bin" image variant, meant to be copied from — see
@@ -41,19 +44,25 @@ RUN pnpm install --frozen-lockfile
 RUN deno task --cwd apps/proxy build
 
 # ---- production dependencies ----
-# Pure-JS prod deps (hono, @hono/node-server, @sentry/node, livekit-server-sdk).
-# `deno install` resolves and fetches these itself straight from
+# Only the proxy's `dependencies` (hono, @hono/node-server, @sentry/node,
+# livekit-server-sdk), whose whole tree is plain JavaScript. `--prod` is what
+# keeps it that way: a bare `deno install` also installs the devDependencies,
+# and tsx and vitest bring esbuild and vite's bundler, whose native binaries
+# Deno picks for the machine running this stage (the check below rejects them).
+# `deno install` resolves and fetches the packages itself straight from
 # package.json/the npm registry — no Node, npm, or the pnpm workspace symlink
 # farm needed in the runtime image.
 FROM --platform=$BUILDPLATFORM denoland/deno:2.9.5 AS deps
 WORKDIR /app
 COPY apps/proxy/package.json ./package.json
 COPY apps/proxy/deno.json ./deno.json
-RUN deno install
+RUN deno install --prod
 # This node_modules is copied unchanged into every architecture's image, so no
 # package in it may be built for one CPU. Such a package (a prebuilt binary
 # that declares "cpu" in its package.json) is picked for the machine running
-# this stage, not for the target, so fail the build rather than ship one.
+# this stage, not for the target, so fail the build rather than ship one. A
+# runtime dependency that needs one has to be installed per target instead
+# (`deno install --prod --os linux --arch <x64|arm64>`, Deno 2.8+).
 RUN found="$(grep -rlE --include=package.json '"cpu"[[:space:]]*:' node_modules)"; \
     status=$?; \
     if [ "$status" -eq 0 ]; then \
