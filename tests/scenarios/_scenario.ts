@@ -67,10 +67,66 @@ export async function sendTurn(page: Page, message: string): Promise<void> {
 }
 
 /**
+ * Marker the app keeps at the end of an assistant reply while it is still streaming:
+ * useConversationService appends '...' to every fragment except the final one.
+ */
+const STREAMING_MARKER = '...'
+
+/** How long a finished reply must hold still before it counts as settled. */
+const SETTLE_MS = 500
+
+/** Time left before `deadline`. Never 0, which expect.poll reads as "no timeout". */
+function remaining(deadline: number): number {
+  return Math.max(deadline - Date.now(), 1)
+}
+
+/** Assistant reply bodies, oldest first: each follows its bubble's "Assistant" label. */
+function assistantReplies(page: Page) {
+  return page.getByText('Assistant', { exact: true }).locator('xpath=following-sibling::div[1]')
+}
+
+/** Text of the newest assistant reply, without the bubble's "Assistant" label. */
+export async function latestAssistantReply(page: Page): Promise<string> {
+  return ((await assistantReplies(page).last().textContent()) ?? '').trim()
+}
+
+/**
+ * Wait for the newest assistant reply to settle: it has stopped streaming and its text
+ * has held still for SETTLE_MS. Returns that text.
+ */
+export async function awaitSettledReply(page: Page, timeout = 30_000): Promise<string> {
+  let text = ''
+  let changedAt = Date.now()
+
+  await expect
+    .poll(
+      async () => {
+        const latest = await latestAssistantReply(page)
+        if (latest !== text) {
+          text = latest
+          changedAt = Date.now()
+        }
+        const streaming = latest.endsWith(STREAMING_MARKER)
+        return { text: latest, streaming, settled: !streaming && Date.now() - changedAt >= SETTLE_MS }
+      },
+      { timeout, intervals: [100], message: 'the newest assistant reply did not settle' }
+    )
+    .toMatchObject({ settled: true })
+
+  return text
+}
+
+/**
  * Send a turn and wait for a NEW assistant bubble to appear. Returns the assistant
- * bubble text once it settles. Throws (fails the test) if no reply appears.
+ * reply text once it settles. Throws (fails the test) if no reply appears, or if it
+ * has not settled within `timeout` of sending.
+ *
+ * Waiting for the reply to settle matters: a turn sent while a reply still streams
+ * interrupts it, and the app then streams the next reply into the interrupted bubble
+ * instead of a new one, so that turn would never get a bubble of its own.
  */
 export async function sendAndAwaitReply(page: Page, message: string, timeout = 30_000): Promise<string> {
+  const deadline = Date.now() + timeout
   const before = await assistantBubbleCount(page)
   await sendTurn(page, message)
 
@@ -81,10 +137,7 @@ export async function sendAndAwaitReply(page: Page, message: string, timeout = 3
     })
     .toBeGreaterThan(before)
 
-  // Grab the last assistant bubble's text (bubble body follows the "Assistant" label).
-  const lastAssistant = page.getByText('Assistant', { exact: true }).last()
-  const container = lastAssistant.locator('xpath=ancestor::div[1]')
-  return (await container.textContent())?.trim() ?? ''
+  return awaitSettledReply(page, remaining(deadline))
 }
 
 /**
