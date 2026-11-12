@@ -6,7 +6,7 @@
 		Export options for apps/mobile/scripts/ios-archive.sh. The script copies this file, sets
 		teamID from APPLE_TEAM_ID, and sets the profile from APPLE_APP_STORE_PROFILE, so the
 		placeholders below are never shipped as real values. The profile must be an App Store
-		distribution profile for computer.ci.avatar. The owner creates it; nothing here creates one.
+		distribution profile for com.companionintelligence.avatar. The owner creates it; nothing here creates one.
 	-->
 	<key>method</key>
 	<string>app-store-connect</string>
@@ -18,7 +18,7 @@
 	<string>manual</string>
 	<key>provisioningProfiles</key>
 	<dict>
-		<key>computer.ci.avatar</key>
+		<key>com.companionintelligence.avatar</key>
 		<string>REPLACE_WITH_APP_STORE_PROFILE_NAME</string>
 	</dict>
 </dict>

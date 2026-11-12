@@ -90,7 +90,7 @@ although the skeptic refuted it as a defect.
   built yet.
 - **Licence.** The repo is PolyForm Noncommercial 1.0.0. Whether a free store listing is allowed is a
   counsel decision.
-- **Identifiers.** `computer.ci.avatar` is provisional. The Android applicationId becomes permanent
+- **Identifiers.** `com.companionintelligence.avatar` is the iOS bundle ID of the live App Store app, and the Android applicationId matches it. The Android applicationId becomes permanent
   after the first upload.
 - **Signing.** iOS needs the Apple team ID, a distribution certificate and a profile. Android needs an
   upload keystore and Play App Signing enrolment. Desktop needs Developer ID signing and notarisation,

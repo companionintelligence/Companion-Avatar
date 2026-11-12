@@ -2,7 +2,7 @@
 
 Checked 2026-11-02 on branch `feat/native-shells-face-to-voice` in the native-shells worktree. Nothing was uploaded or submitted. No Play Console account, upload key or certificate was created. Signing was tested with a throwaway keystore in the scratchpad, which was deleted afterwards.
 
-Identifiers and levels: applicationId and namespace `computer.ci.avatar` (provisional, see below), app name "Avatar Companion", versionCode 1, versionName 1.0, minSdk 24, compileSdk 36, targetSdk 36.
+Identifiers and levels: applicationId and namespace `com.companionintelligence.avatar` (same as iOS, see below), app name "Avatar Companion", versionCode 1, versionName 1.0, minSdk 24, compileSdk 36, targetSdk 36.
 
 ## Ready
 
@@ -21,7 +21,7 @@ Identifiers and levels: applicationId and namespace `computer.ci.avatar` (provis
 
 ## The owner must supply
 
-1. **applicationId.** `computer.ci.avatar` is provisional. An Android applicationId is permanent once uploaded. Choose the final ID before any upload. If it changes, update `capacitor.config.ts` (appId), `android/app/build.gradle` (namespace and applicationId) and the Java package directory under `src/main/java` together.
+1. **applicationId.** `com.companionintelligence.avatar` matches the iOS bundle ID. An Android applicationId is permanent once uploaded, so confirm it before the first Play upload. If it changes, update `capacitor.config.ts` (appId), `android/app/build.gradle` (namespace and applicationId) and the Java package directory under `src/main/java` together.
 2. **Upload key and Play App Signing.** Create the upload keystore on the owner's machine, outside the repo, and back it up. Fill in `android/keystore.properties` from the example, or set the four environment variables. Enrol the app in Play App Signing, so that Google holds the app signing key and the upload key only signs uploads.
 3. **Play Console listing.** App name (check availability). Short description, 80 characters at most. Full description, 4,000 characters at most. 512 x 512 icon (in the scratchpad). 1024 x 500 feature graphic (not made). Phone screenshots from a release-like build, 2 to 8 images under Play's current rules. The emulator captures are for internal checks only. Tablet screenshots if the listing targets tablets.
 4. **Data safety form.**
@@ -67,7 +67,7 @@ Items 11 and 12 above, plus the size choice in item 13. No native change resolve
 - Play Console behaviour: upload, Play App Signing, pre-launch report and listing validation. No account was used.
 - Performance on real hardware. The emulator ran under heavy host load.
 - Legacy icons on API 24 and 25. They were generated and checked for size and transparency, not on a device.
-- The task's `monkey -p computer.ci.avatar -c android.intent.category.LAUNCHER 1` did not bring the app forward on this emulator. It injected a single touch. `am start -n computer.ci.avatar/.MainActivity` launches it.
+- The task's `monkey -p com.companionintelligence.avatar -c android.intent.category.LAUNCHER 1` did not bring the app forward on this emulator. It injected a single touch. `am start -n com.companionintelligence.avatar/.MainActivity` launches it.
 
 ## Commands
 

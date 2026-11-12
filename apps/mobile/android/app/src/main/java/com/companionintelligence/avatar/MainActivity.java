@@ -1,4 +1,4 @@
-package computer.ci.avatar;
+package com.companionintelligence.avatar;
 
 import android.content.res.Configuration;
 import androidx.core.view.WindowCompat;
