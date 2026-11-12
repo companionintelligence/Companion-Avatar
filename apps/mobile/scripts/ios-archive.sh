@@ -60,7 +60,7 @@ if [[ "$MODE" == "signed" ]]; then
   fi
   # Check the export profile before archiving, so a missing profile does not waste a signed build.
   if [[ -z "${APPLE_APP_STORE_PROFILE:-}" ]] && grep -q "$PROFILE_PLACEHOLDER" "$IOS_DIR/ExportOptions.plist"; then
-    echo "ios-archive: no App Store distribution profile for computer.ci.avatar is set." >&2
+    echo "ios-archive: no App Store distribution profile for com.companionintelligence.avatar is set." >&2
     echo "ios-archive: set APPLE_APP_STORE_PROFILE=<profile name>, or replace $PROFILE_PLACEHOLDER in ios/ExportOptions.plist, then rerun." >&2
     exit 2
   fi
@@ -107,9 +107,9 @@ xcodebuild \
 cp "$IOS_DIR/ExportOptions.plist" "$EXPORT_OPTIONS"
 /usr/libexec/PlistBuddy -c "Set :teamID $APPLE_TEAM_ID" "$EXPORT_OPTIONS"
 if [[ -n "${APPLE_APP_STORE_PROFILE:-}" ]]; then
-  /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:computer.ci.avatar $APPLE_APP_STORE_PROFILE" "$EXPORT_OPTIONS"
+  /usr/libexec/PlistBuddy -c "Set :provisioningProfiles:com.companionintelligence.avatar $APPLE_APP_STORE_PROFILE" "$EXPORT_OPTIONS"
 elif grep -q "$PROFILE_PLACEHOLDER" "$EXPORT_OPTIONS"; then
-  echo "ios-archive: the archive is at $ARCHIVE, but export needs an App Store distribution profile for computer.ci.avatar." >&2
+  echo "ios-archive: the archive is at $ARCHIVE, but export needs an App Store distribution profile for com.companionintelligence.avatar." >&2
   echo "ios-archive: set APPLE_APP_STORE_PROFILE=<profile name> and rerun the export step, or edit ios/ExportOptions.plist." >&2
   exit 2
 fi

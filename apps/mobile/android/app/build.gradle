@@ -17,10 +17,10 @@ def releaseKeyAlias = signingValue('keyAlias', 'KEY_ALIAS')
 def releaseKeyPassword = signingValue('keyPassword', 'KEY_PASSWORD')
 
 android {
-    namespace = "computer.ci.avatar"
+    namespace = "com.companionintelligence.avatar"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "computer.ci.avatar"
+        applicationId "com.companionintelligence.avatar"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

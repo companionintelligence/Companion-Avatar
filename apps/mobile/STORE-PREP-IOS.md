@@ -2,13 +2,13 @@
 
 Checked 2026-11-02 on branch `feat/native-shells-face-to-voice` in the native-shells worktree. Nothing was signed, uploaded or submitted. No certificates, profiles or accounts were created.
 
-The bundle ID `computer.ci.avatar` is provisional. `capacitor.config.ts` says so, and this document keeps that caveat.
+The bundle ID `com.companionintelligence.avatar` is final. It matches the live App Store app (Avatar Companion 1.0, released 2026-01-30), so it cannot change.
 
 ## Ready
 
 - **Sync.** `pnpm exec cap sync ios` succeeds on Capacitor 8.6.0. The project uses Swift Package Manager (`ios/App/CapApp-SPM`), so there is no Podfile and no CocoaPods step. The synced web bundle is `ios/App/App/public`, copied from the lead's `apps/web/dist` snapshot.
 - **Debug build.** Builds for the iPhone 17 Pro simulator with Xcode 27.0 and the iphonesimulator 27.0 SDK. The project has no `App.xcworkspace`, so the build uses `-project ios/App/App.xcodeproj`.
-- **Release archive, unsigned.** `apps/mobile/scripts/ios-archive.sh --unsigned` succeeds. The archive is arm64 only, has MinimumOSVersion 15.0, lists device families 1 and 2 (iPhone and iPad), and has CFBundleIdentifier `computer.ci.avatar`. Its `capacitor.config.json` has no `server` key, so the shell loads the bundled web app and not a remote URL.
+- **Release archive, unsigned.** `apps/mobile/scripts/ios-archive.sh --unsigned` succeeds. The archive is arm64 only, has MinimumOSVersion 15.0, lists device families 1 and 2 (iPhone and iPad), and has CFBundleIdentifier `com.companionintelligence.avatar`. Its `capacitor.config.json` has no `server` key, so the shell loads the bundled web app and not a remote URL.
 - **Export compliance.** `ITSAppUsesNonExemptEncryption` is `false` in `App/Info.plist`.
 - **Privacy manifest.** `App/PrivacyInfo.xcprivacy` is in the app target's Resources phase and inside the Release archive's `App.app`. It is provisional (see below).
 - **App icon.** The avatar mark (a head-and-shoulders figure with two orbit rings) on a dark teal gradient. The sources are in `apps/mobile/icon/`, and the mark is not the company logo. The file is 1024 x 1024, RGB, no alpha. The launch screen is still the stock Capacitor placeholder, a blue X on white, and should be replaced before submission.
@@ -17,10 +17,10 @@ The bundle ID `computer.ci.avatar` is provisional. `capacitor.config.ts` says so
 
 ## The owner must supply
 
-1. **Bundle ID.** Register an explicit App ID for `computer.ci.avatar` in the Apple Developer portal, or choose the final identifier first. The bundle ID cannot change after the first upload. The Android `applicationId` has the same permanence.
+1. **Bundle ID.** Confirm an explicit App ID for `com.companionintelligence.avatar` exists in the Apple Developer portal. The bundle ID cannot change now that the app is live. The Android `applicationId` is set to the same value.
 2. **Team ID.** The 10-character Apple Developer team ID, passed as `APPLE_TEAM_ID`.
 3. **Distribution certificate.** An Apple Distribution certificate, created by the owner on the signing Mac.
-4. **Provisioning.** An App Store distribution profile for `computer.ci.avatar`, passed as `APPLE_APP_STORE_PROFILE` or written into `ios/ExportOptions.plist`. Automatic signing is the alternative: change `signingStyle` and remove `provisioningProfiles`.
+4. **Provisioning.** An App Store distribution profile for `com.companionintelligence.avatar`, passed as `APPLE_APP_STORE_PROFILE` or written into `ios/ExportOptions.plist`. Automatic signing is the alternative: change `signingStyle` and remove `provisioningProfiles`.
 5. **App Store Connect listing.** Name (check availability), subtitle, description, keywords, support URL, privacy policy URL and category.
 6. **Age rating.** The bundle references `ollama.com/api/web_search` and `/api/web_fetch`. If those tools are reachable in the store build, answer the unrestricted web access question accordingly.
 7. **App Privacy answers.** Start from the provisional manifest: Other User Content, not linked to the user, not used for tracking, purpose App Functionality. Add Audio Data only if the production build sets `VITE_STT_REMOTE=true`. Add diagnostics only if a Sentry DSN is baked in.

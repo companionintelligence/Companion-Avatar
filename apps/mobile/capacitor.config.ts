@@ -8,7 +8,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // `appId` is provisional. The owner picks the store identifier before any upload, and an
 // Android applicationId is permanent once uploaded.
 const config: CapacitorConfig = {
-  appId: 'computer.ci.avatar',
+  appId: 'com.companionintelligence.avatar',
   appName: 'Avatar Companion',
   webDir: '../web/dist',
   android: {
