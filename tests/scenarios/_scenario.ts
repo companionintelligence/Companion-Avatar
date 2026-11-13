@@ -12,12 +12,19 @@ import { expect, type Page } from '@playwright/test'
  * We force script mode defensively via window.__APP_CONFIG__ (honored synchronously by
  * loadRuntimeConfig before first render) and clear any persisted LLM override, so the
  * suite is hermetic regardless of the developer's local settings.
+ *
+ * Script mode alone is not enough. A session starts Unverified, and while it is
+ * Unverified the app answers every turn with one canned "I am not connected yet" reply
+ * and never reaches the directed responses (processUserInput in llmService.ts). So
+ * bootApp() leaves the onboarding overlay up and clicks its "Skip", which is how a
+ * visitor enters the demo: in script mode it makes the session Demo-only
+ * (handleSkipOnboarding in apps/web/src/App.tsx). bootApp() then asserts Demo-only.
  */
 
 export const DIRECTED_SCRIPT_INIT = `
   try { localStorage.removeItem('ci_avatar_llm_overrides') } catch {}
-  // Skip the mic onboarding modal so the chat input is immediately interactive.
-  try { localStorage.setItem('ci_avatar_onboarded', 'true') } catch {}
+  // Show the onboarding overlay: bootApp() clicks its "Skip" to make the session Demo-only.
+  try { localStorage.removeItem('ci_avatar_onboarded') } catch {}
   window.__APP_CONFIG__ = { llm: { llm_provider: 'script' } };
 `
 
@@ -28,7 +35,11 @@ export interface BootedApp {
   errors: string[]
 }
 
-/** Boot the real app in script mode and wait for the avatar canvas to come up. */
+/**
+ * Boot the real app in script mode, wait for the avatar canvas to come up, and skip
+ * onboarding so the session is Demo-only (see the top of this file). Fails the test if
+ * the session does not become Demo-only.
+ */
 export async function bootApp(page: Page): Promise<BootedApp> {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
@@ -40,9 +51,43 @@ export async function bootApp(page: Page): Promise<BootedApp> {
   await page.waitForSelector('.app-container, div[class*="min-h-screen"]', { timeout: 45_000 })
   await page.waitForSelector('canvas', { timeout: 45_000 })
 
+  // "Skip", not "Enable Mic": Enable Mic leaves the session Unverified and turns the
+  // microphone on, which makes the chat input read-only.
+  const skip = page.getByRole('button', { name: 'Skip', exact: true })
+  await skip.click({ timeout: 45_000 })
+  await expect(skip, 'the onboarding overlay did not close after "Skip"').toBeHidden()
+
+  // The chat log's status names the session.
+  await expect(
+    page.getByRole('status', { name: 'Session: Demo-only', exact: true }),
+    'the session is not Demo-only, so every turn would get the "not connected" reply'
+  ).toBeVisible()
+
   // Give the avatar its greet→idle startup a beat to begin animating.
   await page.waitForTimeout(2500)
   return { errors }
+}
+
+/** One trigger group of directed-responses.json (see llmDirected.ts). */
+export interface DirectedTriggerGroup {
+  triggers: string[]
+  responses: { id: string; response: string }[]
+}
+
+/**
+ * Serve `groups` ahead of the stock directed-responses catalog for this page. The
+ * directed adapter looks for an exact trigger match in every group before it tries
+ * partial matches, and takes the first group that matches, so a message equal to one
+ * of these triggers gets one of these replies. Call it before bootApp(): the app
+ * fetches the catalog once and caches it.
+ */
+export async function serveDirectedReplies(page: Page, groups: DirectedTriggerGroup[]): Promise<void> {
+  await page.route('**/assets/directed-responses.json', async (route) => {
+    const catalog = (await (await route.fetch()).json()) as { triggers: unknown[] }
+    // Fulfill with `json` alone, not the fetched response, so the stock catalog's
+    // Content-Length header does not go out with the longer body.
+    await route.fulfill({ json: { ...catalog, triggers: [...groups, ...catalog.triggers] } })
+  })
 }
 
 /** Number of assistant reply bubbles currently rendered in the chat log. */
@@ -67,24 +112,115 @@ export async function sendTurn(page: Page, message: string): Promise<void> {
 }
 
 /**
- * Send a turn and wait for a NEW assistant bubble to appear. Returns the assistant
- * bubble text once it settles. Throws (fails the test) if no reply appears.
+ * Marker the app keeps at the end of an assistant reply while it is still streaming:
+ * useConversationService appends '...' to every fragment except the final one.
  */
-export async function sendAndAwaitReply(page: Page, message: string, timeout = 30_000): Promise<string> {
+const STREAMING_MARKER = '...'
+
+/** How long a finished reply must hold still before it counts as settled. */
+const SETTLE_MS = 500
+
+/** Time left before `deadline`. Never 0, which expect.poll reads as "no timeout". */
+function remaining(deadline: number): number {
+  return Math.max(deadline - Date.now(), 1)
+}
+
+/** Assistant reply bodies, oldest first: each follows its bubble's "Assistant" label. */
+function assistantReplies(page: Page) {
+  return page.getByText('Assistant', { exact: true }).locator('xpath=following-sibling::div[1]')
+}
+
+/** Text of the newest assistant reply, without the bubble's "Assistant" label. */
+export async function latestAssistantReply(page: Page): Promise<string> {
+  return ((await assistantReplies(page).last().textContent()) ?? '').trim()
+}
+
+/** Text of every assistant reply, oldest first, one reply per line. */
+export async function assistantTranscript(page: Page): Promise<string> {
+  return (await assistantReplies(page).allTextContents()).map((text) => text.trim()).join('\n')
+}
+
+/**
+ * Send a turn and wait for a NEW assistant bubble to appear, but not for the reply to
+ * finish streaming. Only a barge-in wants that (see bargeIn()); every other turn
+ * should go through sendAndAwaitReply().
+ */
+export async function sendAndAwaitReplyStart(page: Page, message: string, timeout = 30_000): Promise<void> {
   const before = await assistantBubbleCount(page)
   await sendTurn(page, message)
 
   await expect
     .poll(async () => assistantBubbleCount(page), {
       timeout,
+      intervals: [100],
       message: `no new assistant reply appeared after sending "${message}"`
     })
     .toBeGreaterThan(before)
+}
 
-  // Grab the last assistant bubble's text (bubble body follows the "Assistant" label).
-  const lastAssistant = page.getByText('Assistant', { exact: true }).last()
-  const container = lastAssistant.locator('xpath=ancestor::div[1]')
-  return (await container.textContent())?.trim() ?? ''
+/**
+ * Wait for the newest assistant reply to settle: it has stopped streaming and its text
+ * has held still for SETTLE_MS. Returns that text.
+ */
+export async function awaitSettledReply(page: Page, timeout = 30_000): Promise<string> {
+  let text = ''
+  let changedAt = Date.now()
+
+  await expect
+    .poll(
+      async () => {
+        const latest = await latestAssistantReply(page)
+        if (latest !== text) {
+          text = latest
+          changedAt = Date.now()
+        }
+        const streaming = latest.endsWith(STREAMING_MARKER)
+        return { text: latest, streaming, settled: !streaming && Date.now() - changedAt >= SETTLE_MS }
+      },
+      { timeout, intervals: [100], message: 'the newest assistant reply did not settle' }
+    )
+    .toMatchObject({ settled: true })
+
+  return text
+}
+
+/**
+ * Send a turn and wait for a NEW assistant bubble to appear. Returns the assistant
+ * reply text once it settles. Throws (fails the test) if no reply appears, or if it
+ * has not settled within `timeout` of sending.
+ *
+ * Waiting for the reply to settle matters: a turn sent while a reply still streams
+ * interrupts it, and the app then streams the next reply into the interrupted bubble
+ * instead of a new one, so that turn would never get a bubble of its own.
+ */
+export async function sendAndAwaitReply(page: Page, message: string, timeout = 30_000): Promise<string> {
+  const deadline = Date.now() + timeout
+  await sendAndAwaitReplyStart(page, message, timeout)
+  return awaitSettledReply(page, remaining(deadline))
+}
+
+/**
+ * Barge in on the reply that is streaming now: send `message` before that reply
+ * finishes, then wait for the chat to settle. Call it right after
+ * sendAndAwaitReplyStart(). If the reply has already finished, `message` would be an
+ * ordinary turn, so that fails the test instead of passing as a barge-in. Returns
+ * assistantTranscript() once the chat has settled.
+ *
+ * Assert on the transcript, not on the bubble count. The interrupted reply never gets
+ * its final fragment, so its bubble keeps STREAMING_MARKER, and useConversationService
+ * streams the answer to the barge-in into that bubble rather than a new one.
+ */
+export async function bargeIn(page: Page, message: string, timeout = 30_000): Promise<string> {
+  const deadline = Date.now() + timeout
+  const interrupted = await latestAssistantReply(page)
+  expect(
+    interrupted.endsWith(STREAMING_MARKER),
+    `the reply finished streaming before "${message}" was sent, so it would not be a barge-in`
+  ).toBe(true)
+
+  await sendTurn(page, message)
+  await awaitSettledReply(page, remaining(deadline))
+  return assistantTranscript(page)
 }
 
 /**
