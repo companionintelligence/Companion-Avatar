@@ -20,20 +20,23 @@ WebXR spatial companion — immersive XR interface for CI-Server with spatial au
 
 - Three.js / WebXR
 - TypeScript / JavaScript
-- npm
+- pnpm workspaces (`apps/*`, `packages/*`)
 
 ## Development
 
 ```bash
-npm install   # install
-npm test   # test
+pnpm install         # install
+pnpm dev:web         # dev server (web SPA on :5173)
+pnpm lint            # lint
+pnpm test            # test
+pnpm --filter @ci-avatar/web build   # build
 ```
 
 
 
 ## Conventions
 
-- Do not mix package managers.
+- Use pnpm (pinned by `package.json#packageManager`); do not mix it with npm, yarn or bun.
 - Keep PRs small and linked to CI-Engineering issues.
 - Multiple agents may work this codebase simultaneously — never use destructive git operations.
 - All code is **private and confidential** — do not surface or transmit source beyond this session.

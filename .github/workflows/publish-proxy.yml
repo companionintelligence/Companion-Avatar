@@ -1,7 +1,21 @@
 name: Publish proxy container
 
-# Builds the BFF sidecar image, smoke-tests /api/health, then pushes to GHCR.
-# The marketplace manifest pins :latest.
+# Builds the BFF sidecar image for linux/amd64 and linux/arm64, smoke-tests
+# /api/health on each, then pushes both to GHCR as one multi-arch image. The
+# marketplace manifest pins :latest, and the listing declares arm64 and amd64
+# (marketplace/ci-spatial-companion-webxr/config.json), so every published tag
+# has to carry both architectures.
+#
+# Multi-arch the same way docker-publish.yml does it: one runner, QEMU and
+# Buildx. apps/proxy/Dockerfile runs all of its build steps on the runner's own
+# platform ($BUILDPLATFORM) and only copies plain JavaScript into the arm64
+# image, so QEMU is needed to smoke-test arm64, not to build it.
+#
+# Tags: :latest and :sha-<short> on every publish. Dispatched on a git tag, the
+# tag name is pushed too, and a release tag vX.Y.Z (or X.Y.Z) also gets the
+# numeric tags :X.Y.Z and :X.Y. The pushed index digest is a job output and is
+# written to the run summary as a ready-made <image>:<tag>@sha256:... pin.
+# Registry auth is GITHUB_TOKEN only.
 
 # >>> ci-local:gated original triggers below, restore with `ci-local restore`
 # on:
@@ -21,6 +35,9 @@ concurrency:
 
 env:
   IMAGE_NAME: ghcr.io/companionintelligence/ci-spatial-companion-proxy
+  # Each platform here has its own smoke build and test below; add one only
+  # together with those.
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   publish:
@@ -30,10 +47,19 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Runs the arm64 image for the smoke test below.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -44,12 +70,25 @@ jobs:
         run: |
           set -euo pipefail
           short="$(git rev-parse --short HEAD)"
-          echo "sha_tag=${IMAGE_NAME}:sha-${short}" >> "$GITHUB_OUTPUT"
-          tags="${IMAGE_NAME}:latest,${IMAGE_NAME}:sha-${short}"
+          tags=("${IMAGE_NAME}:latest" "${IMAGE_NAME}:sha-${short}")
+          version=""
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            tags="${tags},${IMAGE_NAME}:${GITHUB_REF_NAME}"
+            # A release tag (v0.2.0 or 0.2.0) also publishes :0.2.0 and :0.2.
+            # The git tag name itself is still pushed, so references to the
+            # existing :v0.1.0-style tags keep working.
+            if [[ "${GITHUB_REF_NAME}" =~ ^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+              tags+=("${IMAGE_NAME}:${version}" "${IMAGE_NAME}:${BASH_REMATCH[1]}.${BASH_REMATCH[2]}")
+            else
+              echo "::notice::Git tag ${GITHUB_REF_NAME} is not vX.Y.Z, so no numeric version tags are pushed."
+            fi
+            if [ "${GITHUB_REF_NAME}" != "${version}" ]; then
+              tags+=("${IMAGE_NAME}:${GITHUB_REF_NAME}")
+            fi
           fi
-          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          (IFS=,; echo "tags=${tags[*]}") >> "$GITHUB_OUTPUT"
+          printf 'Tags to publish:\n'; printf '  %s\n' "${tags[@]}"
 
       # Advisory only — a missing secret must never fail the publish. Without it
       # the build arg below expands to empty, the Dockerfile ARG default wins,
@@ -65,57 +104,100 @@ jobs:
             echo "SENTRY_DSN is set — baking it into the published proxy image."
           fi
 
-      - name: Build image (load for testing)
+      # One single-platform build per architecture, each loaded into the
+      # runner's Docker so the smoke test runs exactly the image that platform
+      # gets. Both share every RUN step ($BUILDPLATFORM), so the second build
+      # only adds the arm64 base image and the copies onto it.
+      - name: Build image (linux/amd64, load for testing)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/proxy/Dockerfile
+          platforms: linux/amd64
           load: true
-          tags: ${{ steps.meta.outputs.sha_tag }}
+          tags: proxy-smoke:amd64
           build-args: |
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_RELEASE=ci-spatial-companion-proxy@${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=proxy
 
-      - name: Start container
-        # CI_TELEMETRY=off because the image now has a real DSN baked in and this
-        # is a throwaway CI container: without it the health smoke test would file
-        # any boot error into the production Sentry project.
-        run: docker run -d --name proxy -e CI_TELEMETRY=off -p 8787:8787 ${{ steps.meta.outputs.sha_tag }}
+      - name: Build image (linux/arm64, load for testing)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/proxy/Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: proxy-smoke:arm64
+          build-args: |
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            SENTRY_RELEASE=ci-spatial-companion-proxy@${{ github.sha }}
+          cache-from: type=gha,scope=proxy
 
-      - name: Smoke test /api/health
-        # This is an ephemeral container with no real Ollama/CosyVoice reachable
+      - name: Smoke test /api/health (amd64 native, arm64 under QEMU)
+        # These are ephemeral containers with no real Ollama/CosyVoice reachable
         # from the runner, so /api/health legitimately reports "degraded" (see
         # the "make connection health truthful" change — status reflects actual
         # upstream reachability, and routes.chat.test.ts itself asserts status
         # is one of 'ok' | 'degraded'). The smoke test only needs to confirm the
         # server booted and is serving valid health JSON, not that a chat
         # upstream is reachable from CI.
+        #
+        # CI_TELEMETRY=off because the image has a real DSN baked in and these
+        # are throwaway CI containers: without it the health smoke test would
+        # file any boot error into the production Sentry project.
+        #
+        # arm64 runs under emulation, so it gets a longer start-up budget.
+        shell: bash
         run: |
-          for i in $(seq 1 30); do
-            body="$(curl -s http://localhost:8787/api/health || true)"
-            if echo "$body" | grep -qE '"status":"(ok|degraded)"'; then echo "healthy: $body"; exit 0; fi
-            sleep 1
-          done
-          echo "proxy never became healthy"; docker logs proxy; exit 1
+          set -uo pipefail
+          smoke() {
+            local arch="$1" port="$2" tries="$3" image="proxy-smoke:$1" actual body
+            actual="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" || return 1
+            if [ "$actual" != "linux/${arch}" ]; then
+              echo "::error::${image} is ${actual}, expected linux/${arch}"; return 1
+            fi
+            docker run -d --name "proxy-${arch}" --platform "linux/${arch}" \
+              -e CI_TELEMETRY=off -p "127.0.0.1:${port}:8787" "$image" >/dev/null || return 1
+            for _ in $(seq 1 "$tries"); do
+              body="$(curl -s --max-time 5 "http://127.0.0.1:${port}/api/health" || true)"
+              if echo "$body" | grep -qE '"status":"(ok|degraded)"'; then
+                echo "linux/${arch} healthy: $body"; return 0
+              fi
+              sleep 2
+            done
+            echo "::error::proxy (linux/${arch}) never became healthy"
+            docker logs "proxy-${arch}" || true
+            return 1
+          }
+          status=0
+          smoke amd64 8787 30 || status=1
+          smoke arm64 8788 90 || status=1
+          exit "$status"
 
       - name: Tear down
         if: always()
-        run: docker rm -f proxy || true
+        run: docker rm -f proxy-amd64 proxy-arm64 || true
 
+      # Same login as docker-publish.yml, with the token passed through env
+      # rather than written into the script.
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_REPOSITORY_OWNER" --password-stdin
 
-      - name: Build and push
+      # Both platforms again, served from the builder cache the two smoke
+      # builds just filled, pushed as one image index under every tag.
+      - name: Build and push (linux/amd64 + linux/arm64)
+        id: push
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/proxy/Dockerfile
           push: true
-          platforms: linux/amd64
+          platforms: ${{ env.PLATFORMS }}
           tags: ${{ steps.meta.outputs.tags }}
           # Server-side sidecar: SENTRY_DSN (no VITE_ prefix) becomes a runtime
           # ENV that instrument.ts reads at start-up. The web image is the
@@ -123,5 +205,44 @@ jobs:
           build-args: |
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             SENTRY_RELEASE=ci-spatial-companion-proxy@${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=min
+          # Its own cache scope: docker-publish.yml writes the default scope,
+          # and two images sharing one scope overwrite each other's cache
+          # (https://docs.docker.com/build/cache/backends/gha/).
+          cache-from: type=gha,scope=proxy
+          cache-to: type=gha,mode=max,scope=proxy
+
+      - name: Verify and record the published digest
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::build-push-action reported no image digest (got '${DIGEST}')"; exit 1
+          fi
+          inspect="$(docker buildx imagetools inspect "${IMAGE_NAME}@${DIGEST}")"
+          echo "$inspect"
+          for platform in ${PLATFORMS//,/ }; do
+            if ! grep -Eq "Platform:[[:space:]]+${platform}([/[:space:]]|$)" <<<"$inspect"; then
+              echo "::error::${IMAGE_NAME}@${DIGEST} is missing ${platform}"; exit 1
+            fi
+          done
+          pin="${IMAGE_NAME}:${VERSION:-latest}@${DIGEST}"
+          echo "::notice title=Published proxy image::${pin}"
+          IFS=, read -ra pushed <<<"$TAGS"
+          {
+            echo "### Published \`${IMAGE_NAME}\`"
+            echo
+            echo "- Digest: \`${DIGEST}\`"
+            echo "- Platforms: \`${PLATFORMS}\`"
+            echo "- Pin: \`${pin}\`"
+            echo "- Tags:"
+            for tag in "${pushed[@]}"; do echo "  - \`${tag}\`"; done
+            echo
+            echo "\`\`\`"
+            echo "$inspect"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

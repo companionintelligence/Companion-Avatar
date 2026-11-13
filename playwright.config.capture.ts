@@ -83,9 +83,11 @@ export default defineConfig({
   webServer: {
     // Boots vite via the workspace; `predev` (pack-assets) runs first so every
     // AvatarOptions entry is materialized into public/assets before the matrix runs.
-    command: `PORT=${PORT} pnpm --filter @ci-avatar/web dev`,
+    command: 'pnpm --filter @ci-avatar/web dev',
     url: BASE_URL,
     reuseExistingServer: true,
-    timeout: 180 * 1000
+    timeout: 180 * 1000,
+    // Set via `env` rather than a `PORT=... cmd` command prefix, which cmd.exe (Windows) cannot parse.
+    env: { PORT: String(PORT) }
   }
 })

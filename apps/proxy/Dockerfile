@@ -11,13 +11,30 @@
 # is deliberately not used for either stage — it isn't reliable against
 # pnpm's symlinked node_modules layout — so this stays `deno run` in a
 # container, matching how the sidecar was already deployed.
+#
+# Multi-arch: .github/workflows/publish-proxy.yml publishes this image for
+# linux/amd64 and linux/arm64, so arm64 Hubs can run the sidecar. Every base
+# image below is published for both. The runtime image receives only plain
+# JavaScript: the proxy's tsc output and its production node_modules
+# (`pnpm deploy --prod` from pnpm-lock.yaml, checked below for anything built
+# for one CPU). So every RUN step runs on the builder's own platform
+# ($BUILDPLATFORM), and the runtime stage only copies that output onto the
+# target platform's Deno image. A cross-build therefore emulates nothing, and
+# both architectures get the same dependency tree from the one lockfile. The
+# build stage's workspace install does fetch native build tools (esbuild,
+# rollup) for the builder, which is where they run; none of them reach the
+# runtime image.
 
-# ---- build stage ----
-FROM node:22-bookworm-slim AS build
+# ---- deno binary for the build stage ----
 # Official "bin" image variant, meant to be copied from — see
 # https://github.com/denoland/deno_docker. Pinned to the same Deno version
-# this migration was developed and tested against.
-COPY --from=denoland/deno:bin-2.9.5 /deno /usr/local/bin/deno
+# this migration was developed and tested against. A named stage on
+# $BUILDPLATFORM, so the binary always matches the build stage that runs it.
+FROM --platform=$BUILDPLATFORM denoland/deno:bin-2.9.5 AS deno-bin
+
+# ---- build stage ----
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build
+COPY --from=deno-bin /deno /usr/local/bin/deno
 RUN corepack enable
 WORKDIR /app
 COPY . .
@@ -37,18 +54,42 @@ RUN pnpm --filter @ci-avatar/proxy --prod \
       --config.inject-workspace-packages=true --config.node-linker=hoisted \
       deploy --frozen-lockfile /prod/proxy
 
-# ---- runtime stage ----
-FROM denoland/deno:2.9.5 AS runtime
+# ---- production dependencies ----
+# Only the proxy's `dependencies` (hono, @hono/node-server, @sentry/node,
+# livekit-server-sdk), whose whole tree is plain JavaScript, exactly as pinned
+# in pnpm-lock.yaml (the `pnpm deploy` above). `--prod` is what keeps the tree
+# plain: devDependencies such as tsx and vitest would bring esbuild and vite's
+# bundler, whose native binaries are picked for the machine running the build
+# (the check below rejects them).
+FROM --platform=$BUILDPLATFORM denoland/deno:2.9.5 AS deps
 WORKDIR /app
-ENV NODE_ENV=production
-# Pure-JS prod deps (hono, @hono/node-server, @sentry/node, livekit-server-sdk),
-# installed from the lockfile in the build stage above. With a package.json in
-# /app, Deno's nodeModulesDir defaults to "manual"
-# (https://docs.deno.com/runtime/reference/deno_json/): it uses this
-# node_modules as installed and does not resolve or fetch packages itself.
 COPY apps/proxy/package.json ./package.json
 COPY apps/proxy/deno.json ./deno.json
 COPY --from=build /prod/proxy/node_modules ./node_modules
+# This node_modules is copied unchanged into every architecture's image, so no
+# package in it may be built for one CPU. Such a package (a prebuilt binary
+# that declares "cpu" in its package.json) is picked for the machine running
+# the build, not for the target, so fail the build rather than ship one. A
+# runtime dependency that needs one has to be installed per target instead
+# (for example with pnpm's supportedArchitectures setting).
+RUN found="$(grep -rlE --include=package.json '"cpu"[[:space:]]*:' node_modules)"; \
+    status=$?; \
+    if [ "$status" -eq 0 ]; then \
+      printf '%s\n' "These npm packages are built for one CPU and cannot be shared across architectures:" "$found" >&2; \
+      exit 1; \
+    fi; \
+    [ "$status" -eq 1 ]
+
+# ---- runtime stage ----
+# The target platform's Deno image. There is no RUN from here on, so building
+# this stage for another architecture needs no emulation. With a package.json
+# in /app, Deno's nodeModulesDir defaults to "manual"
+# (https://docs.deno.com/runtime/reference/deno_json/): it uses the
+# node_modules copied below as installed and does not install anything itself.
+FROM denoland/deno:2.9.5 AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app ./
 COPY --from=build /app/apps/proxy/dist ./dist
 # Error reporting (Sentry) is opt-out and read entirely at RUNTIME — set
 # SENTRY_DSN and reporting is on unless a kill switch below turns it off; with
