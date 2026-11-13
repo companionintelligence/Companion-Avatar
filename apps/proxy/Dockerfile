@@ -26,19 +26,29 @@ RUN pnpm install --frozen-lockfile
 # apps/proxy/deno.json), against the node_modules pnpm just installed above —
 # just invoked through Deno instead of a Node binary.
 RUN deno task --cwd apps/proxy build
+# The proxy's production dependencies, at the versions pinned in
+# pnpm-lock.yaml: `pnpm deploy --prod` installs only the proxy's
+# `dependencies`, from the lockfile, into /prod/proxy. node-linker=hoisted
+# lays them out as a flat, npm-style node_modules with no symlinks. pnpm 10
+# derives the deploy's lockfile from the workspace one only when
+# inject-workspace-packages is on; it is set for this command alone, and the
+# proxy has no workspace dependencies for it to affect.
+RUN pnpm --filter @ci-avatar/proxy --prod \
+      --config.inject-workspace-packages=true --config.node-linker=hoisted \
+      deploy --frozen-lockfile /prod/proxy
 
 # ---- runtime stage ----
 FROM denoland/deno:2.9.5 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# Pure-JS prod deps (hono, @hono/node-server, @sentry/node). `deno install`
-# resolves and fetches these itself straight from package.json/the npm
-# registry (nodeModulesDir defaults to "auto" whenever a deno.json's own
-# workspace parent isn't present, which is the case here) — no Node, npm, or
-# the pnpm workspace symlink farm needed in this image.
+# Pure-JS prod deps (hono, @hono/node-server, @sentry/node, livekit-server-sdk),
+# installed from the lockfile in the build stage above. With a package.json in
+# /app, Deno's nodeModulesDir defaults to "manual"
+# (https://docs.deno.com/runtime/reference/deno_json/): it uses this
+# node_modules as installed and does not resolve or fetch packages itself.
 COPY apps/proxy/package.json ./package.json
 COPY apps/proxy/deno.json ./deno.json
-RUN deno install
+COPY --from=build /prod/proxy/node_modules ./node_modules
 COPY --from=build /app/apps/proxy/dist ./dist
 # Error reporting (Sentry) is opt-out and read entirely at RUNTIME — set
 # SENTRY_DSN and reporting is on unless a kill switch below turns it off; with

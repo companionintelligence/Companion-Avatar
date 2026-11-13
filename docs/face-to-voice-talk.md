@@ -113,7 +113,8 @@ The full MIT notice is in the upstream `LICENSE` file at the pinned commit.
 
 - No live LiveKit run has happened. Token claims are checked by decoding them in tests. The upstream agent has not been run.
 - The proxy image runs under Deno, and `livekit-server-sdk` is now one of its dependencies. The token path was smoke-tested
-  under Deno 2.9.7 with a flat copy of the same package versions. The image's own `deno install` has not been run.
+  under Deno 2.9.7 with a flat copy of the same package versions. The image now installs them from `pnpm-lock.yaml`
+  with `pnpm deploy`; that install has not been run in a container build.
 - Browser audio routing is tested with fakes for `livekit-client` and the audio graph. It has not been heard in a real
   browser.
 - Lip-sync is not wired (see above).
