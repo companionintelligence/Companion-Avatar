@@ -1,0 +1,123 @@
+name: Native Build Artifacts
+
+# Unsigned build artifacts for developer QA only. This workflow does not publish
+# to a GitHub release or app store. The avatar model/content license is still a
+# store-submission blocker; see apps/desktop/STORE-PREP.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Check native shell config
+        run: pnpm --filter @ci-avatar/desktop test:native
+      - name: Build desktop installer
+        run: pnpm --filter @ci-avatar/desktop build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avatar-desktop-${{ matrix.os }}
+          path: apps/desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android (debug APK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+      - run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+      - run: pnpm install --frozen-lockfile
+      - name: Check native shell config
+        run: pnpm --filter @ci-avatar/mobile test:native
+      - name: Build web bundle
+        run: pnpm --filter @ci-avatar/web build
+      - name: Sync and build Android
+        run: |
+          pnpm --filter @ci-avatar/mobile sync:android
+          cd apps/mobile/android
+          ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avatar-android-debug-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS (Simulator app)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - run: pnpm install --frozen-lockfile
+      - name: Check native shell config
+        run: pnpm --filter @ci-avatar/mobile test:native
+      - name: Build web bundle
+        run: pnpm --filter @ci-avatar/web build
+      - name: Sync iOS
+        run: pnpm --filter @ci-avatar/mobile sync:ios
+      - name: Build iOS Simulator app
+        working-directory: apps/mobile/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES build
+      - name: Package iOS Simulator app
+        run: |
+          APP=$(find apps/mobile/ios/App/build/Build/Products -name 'App.app' -type d | head -1)
+          test -d "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" avatar-ios-simulator.app.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avatar-ios-simulator-app
+          path: avatar-ios-simulator.app.zip
+          if-no-files-found: error
+          retention-days: 14
