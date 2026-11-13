@@ -7,8 +7,10 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build",
-    "build:debug": "tauri build --debug --bundles app"
+    "build": "npm run icons && tauri build",
+    "build:debug": "npm run icons && tauri build --debug",
+    "test:native": "node --test tests/*.test.mjs",
+    "icons": "tauri icon \"../web/public/icons/icon-512.png\" --output src-tauri/icons"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4"

@@ -10,7 +10,8 @@
     "sync:android": "cap sync android",
     "sync:ios": "cap sync ios",
     "open:android": "cap open android",
-    "open:ios": "cap open ios"
+    "open:ios": "cap open ios",
+    "test:native": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",
