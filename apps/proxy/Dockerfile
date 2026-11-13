@@ -16,13 +16,14 @@
 # linux/amd64 and linux/arm64, so arm64 Hubs can run the sidecar. Every base
 # image below is published for both. The runtime image receives only plain
 # JavaScript: the proxy's tsc output and its production node_modules
-# (`deno install --prod`, checked below for anything built for one CPU). So
-# every RUN step runs on the builder's own platform ($BUILDPLATFORM), and the
-# runtime stage only copies that output onto the target platform's Deno image.
-# A cross-build therefore emulates nothing, and both architectures get the
-# same dependency tree from one resolution. The build stage's workspace install
-# does fetch native build tools (esbuild, rollup) for the builder, which is
-# where they run; none of them reach the runtime image.
+# (`pnpm deploy --prod` from pnpm-lock.yaml, checked below for anything built
+# for one CPU). So every RUN step runs on the builder's own platform
+# ($BUILDPLATFORM), and the runtime stage only copies that output onto the
+# target platform's Deno image. A cross-build therefore emulates nothing, and
+# both architectures get the same dependency tree from the one lockfile. The
+# build stage's workspace install does fetch native build tools (esbuild,
+# rollup) for the builder, which is where they run; none of them reach the
+# runtime image.
 
 # ---- deno binary for the build stage ----
 # Official "bin" image variant, meant to be copied from — see
@@ -42,27 +43,35 @@ RUN pnpm install --frozen-lockfile
 # apps/proxy/deno.json), against the node_modules pnpm just installed above —
 # just invoked through Deno instead of a Node binary.
 RUN deno task --cwd apps/proxy build
+# The proxy's production dependencies, at the versions pinned in
+# pnpm-lock.yaml: `pnpm deploy --prod` installs only the proxy's
+# `dependencies`, from the lockfile, into /prod/proxy. node-linker=hoisted
+# lays them out as a flat, npm-style node_modules with no symlinks. pnpm 10
+# derives the deploy's lockfile from the workspace one only when
+# inject-workspace-packages is on; it is set for this command alone, and the
+# proxy has no workspace dependencies for it to affect.
+RUN pnpm --filter @ci-avatar/proxy --prod \
+      --config.inject-workspace-packages=true --config.node-linker=hoisted \
+      deploy --frozen-lockfile /prod/proxy
 
 # ---- production dependencies ----
 # Only the proxy's `dependencies` (hono, @hono/node-server, @sentry/node,
-# livekit-server-sdk), whose whole tree is plain JavaScript. `--prod` is what
-# keeps it that way: a bare `deno install` also installs the devDependencies,
-# and tsx and vitest bring esbuild and vite's bundler, whose native binaries
-# Deno picks for the machine running this stage (the check below rejects them).
-# `deno install` resolves and fetches the packages itself straight from
-# package.json/the npm registry — no Node, npm, or the pnpm workspace symlink
-# farm needed in the runtime image.
+# livekit-server-sdk), whose whole tree is plain JavaScript, exactly as pinned
+# in pnpm-lock.yaml (the `pnpm deploy` above). `--prod` is what keeps the tree
+# plain: devDependencies such as tsx and vitest would bring esbuild and vite's
+# bundler, whose native binaries are picked for the machine running the build
+# (the check below rejects them).
 FROM --platform=$BUILDPLATFORM denoland/deno:2.9.5 AS deps
 WORKDIR /app
 COPY apps/proxy/package.json ./package.json
 COPY apps/proxy/deno.json ./deno.json
-RUN deno install --prod
+COPY --from=build /prod/proxy/node_modules ./node_modules
 # This node_modules is copied unchanged into every architecture's image, so no
 # package in it may be built for one CPU. Such a package (a prebuilt binary
 # that declares "cpu" in its package.json) is picked for the machine running
-# this stage, not for the target, so fail the build rather than ship one. A
+# the build, not for the target, so fail the build rather than ship one. A
 # runtime dependency that needs one has to be installed per target instead
-# (`deno install --prod --os linux --arch <x64|arm64>`, Deno 2.8+).
+# (for example with pnpm's supportedArchitectures setting).
 RUN found="$(grep -rlE --include=package.json '"cpu"[[:space:]]*:' node_modules)"; \
     status=$?; \
     if [ "$status" -eq 0 ]; then \
