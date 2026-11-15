@@ -92,8 +92,11 @@ morph names, RPM bones `Hips/Spine/Spine1/Spine2/Neck/Head/LeftEye/RightEye`) be
 6. **Pin Blender 4.5 LTS** — HumGen 4.0.27 + VRM addon are far more likely validated there; glTF/VRM
    operator options drift 4.x→5.x.
 7. **Licensing** — HumGen has a separate "Human Generator Asset License" (PDF in Drive) governing
-   commercial use of generated humans; review before shipping publicly. RPM library is free but
-   "intended for RPM avatars" — Strategy D keeps outputs on the RPM skeleton (the intended use).
+   commercial use of generated humans. RPM library is free but "intended for RPM avatars" —
+   Strategy D keeps outputs on the RPM skeleton (the intended use). For the files already in
+   `assets/` (humgen-aria-01 and the RPM clips included), the owner confirmed permission to
+   redistribute them on 2026-11-14, and the native builds ship them; `NOTICE.md` credits them. A
+   new generated avatar or clip still needs its licence checked before it is added.
 8. **App bugs the pipeline surfaces** — the inverted `.glb` filter and VRMA-only `ANIMATION_CLIPS`
    ([ANIMATION-PIPELINE.md](ANIMATION-PIPELINE.md)) must be fixed for GLB avatars to use GLB/RPM clips.
 

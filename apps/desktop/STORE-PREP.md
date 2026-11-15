@@ -2,7 +2,8 @@
 
 Written 2026-11-02 by the desktop track in the `native-shells` worktree of `CI-Spatial-Agent-Web`.
 Nothing here has been signed for distribution, notarized, uploaded or submitted to a store.
-Read the owner decisions at the end before any build leaves the owner's machine.
+Read the owner decisions at the end. Decision 5, which avatars, animations and props may ship, was
+made on 2026-11-14: all of them (see Payload).
 
 ## Status
 
@@ -65,14 +66,18 @@ Measured 2026-11-02 from `apps/web/dist` (read-only):
 - 82 model files (`.glb`, `.vrm`, `.gltf`, `.bin`) total 244.9 MB (233.5 MiB).
 - The 10 VRM files under `assets/avatars/vrm/` total 119.0 MB. `NOTICE.md` records their embedded
   terms: redistribution prohibited, author only, or no commercial use. Two are VRoid Hub terms.
-- `assets/avatars/humgen-aria-01.vrm` (22.6 MB) is first-party. The other GLB avatars total
-  51.4 MB. `NOTICE.md` says they carry no machine-readable licence and need review before any
-  redistribution.
+- `assets/avatars/humgen-aria-01.vrm` (22.6 MB) is Companion Intelligence's, made with Human
+  Generator 3D. The other GLB avatars total 51.4 MB. Twelve of them carry the glTF copyright
+  "Ready Player Me": Ready Player Me Avatar Creator output, published under CC BY-NC 4.0.
 
 Every desktop build copies all of `apps/web/dist` into the binary, so every build carries these
-files. Rule for this track: no build leaves the owner's machine (no upload, no shared installer, no
-TestFlight or store submission) until a slim store build exists. The slim build must leave out the
-restricted models and load avatars from a source the owner controls. It does not exist yet.
+files.
+
+**Decided 2026-11-14: ship them.** The owner confirmed on 2026-11-14 that Companion Intelligence
+has permission to redistribute the bundled avatars, animations and props, and decided that the
+native builds include all of `assets/` as it is. The earlier rule for this track (no build leaves
+the owner's machine until a slim store build leaves out the restricted models) is withdrawn, and no
+slim build is needed. `NOTICE.md` credits every file with its author, source and licence.
 
 ## WebXR
 
@@ -98,9 +103,10 @@ store listing.
 4. **Licence.** The repository licence is PolyForm Noncommercial 1.0.0, which restricts commercial
    use. Decide whether store distribution is allowed under it, paid or free, or whether a separate
    store licence is needed.
-5. **Third-party models.** Decide which models may ship. Under their embedded terms, none of the 10
-   VRM files under `assets/avatars/vrm/` may be redistributed for commercial use. The slim store build
-   needs replacements or a separate content source.
+5. **Third-party models.** Decided 2026-11-14. The owner confirmed that Companion Intelligence has
+   permission to redistribute the bundled avatars, animations and props, so every native build ships
+   all of `assets/` as it is. The files' own embedded terms (for the 10 VRMs: no redistribution, or
+   no commercial use) are kept in `NOTICE.md` as credit, beside that permission.
 6. **Updates.** Decide whether direct builds ship an updater. Tauri's updater needs a signing key that
    the owner generates and holds.
 7. **Privacy.** Decide the privacy policy URL and the store privacy answers for microphone use.

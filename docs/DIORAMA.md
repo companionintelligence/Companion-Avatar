@@ -144,9 +144,13 @@ and the failure is the instruction to delete the entry from `PROP_TEXTURES_LOST`
   practicals (`#e8a24a`) on the hardware, CI teal/aqua (`#00a9a7`) rim off the metal,
   mint (`#58ebbf`) reserved for "live" indicator lamps.
 
-## Licensing note (before any commercial ship)
+## Licensing
 
-The props are Sketchfab-sourced models of real, trademarked hardware. Per the GDD's
-legal-clearance gate (§9.4): audit each model's Sketchfab license (CC-BY needs visible
-attribution; NC/editorial-only licenses are disqualifying and must be replaced) and keep
-the depiction nominative/historical. Tracked as a release blocker, not a code TODO.
+The props are Sketchfab-sourced models of real, trademarked hardware; keep the depiction
+nominative and historical. On 2026-11-14 the owner confirmed that Companion Intelligence has
+permission to redistribute them, and the native builds ship all twelve. Matching the source
+names above against Sketchfab the same day found CC BY 4.0 models by museudocomputador and
+maxdragon for eleven of them (the IBM 3178 and CP-500 names also match a second upload, noted in
+`NOTICE.md`); the Commodore PET's author is unknown, because several models share its name. CC BY
+needs visible attribution, which `NOTICE.md` gives. Record the author and licence here when a prop
+is added or replaced.

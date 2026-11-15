@@ -1,8 +1,8 @@
 name: Native Build Artifacts
 
 # Unsigned build artifacts for developer QA only. This workflow does not publish
-# to a GitHub release or app store. The avatar model/content license is still a
-# store-submission blocker; see apps/desktop/STORE-PREP.md.
+# to a GitHub release or app store. The bundled avatars, animations and props may
+# ship: the owner confirmed permission to redistribute them on 2026-11-14 (NOTICE.md).
 on:
   workflow_dispatch:
 

@@ -84,10 +84,11 @@ although the skeptic refuted it as a defect.
 
 ## Owner decisions and blockers
 
-- **Avatar redistribution.** `NOTICE.md` records that the embedded terms restrict redistribution for 9 of the 10
-  VRMs: seven say "Redistribution prohibited" and two say "author only". Only yuki allows it, and
-  not for commercial use. A store build needs licences or a slimmer avatar set. The slim set is not
-  built yet.
+- **Avatar redistribution.** Decided 2026-11-14. `NOTICE.md` records that the embedded terms restrict
+  redistribution for 9 of the 10 VRMs: seven say "Redistribution prohibited" and two say "author
+  only". The owner confirmed that Companion Intelligence has permission to redistribute the bundled
+  avatars, animations and props, so the native builds ship all of `assets/` as it is, with every file
+  credited in `NOTICE.md`. No slimmer avatar set is needed.
 - **Licence.** The repo is PolyForm Noncommercial 1.0.0. Whether a free store listing is allowed is a
   counsel decision.
 - **Identifiers.** `com.companionintelligence.avatar` is the iOS bundle ID of the live App Store app, and the Android applicationId matches it. The Android applicationId becomes permanent

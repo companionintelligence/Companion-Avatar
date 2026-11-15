@@ -19,5 +19,5 @@ Chat and voice call the BFF proxy, so start `pnpm dev:proxy` alongside the dev s
   Linux). WebXR is not available in any of them, so immersive mode stays on the web.
 - `identifier` (`computer.ci.avatar`) and the CSP in `tauri.conf.json` are provisional. The
   owner picks the real bundle identifier before any signed release.
-- The window loads the bundled `apps/web/dist`, which contains every third-party avatar
-  model. See the wrapping plan before any distribution.
+- The window loads the bundled `apps/web/dist`, which contains every avatar, animation and prop
+  in `assets/`. The owner confirmed permission to redistribute them on 2026-11-14 (`NOTICE.md`).
