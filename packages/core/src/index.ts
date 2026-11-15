@@ -134,6 +134,8 @@ export { ControlButton } from './components/common/ControlButton'
 export { ToggleButton } from './components/common/ToggleButton'
 export { Tooltip } from './components/common/Tooltip'
 export { OnboardingOverlay } from './components/common/OnboardingOverlay'
+export { connectionTargetFor } from './services/connection/connectionHealth'
+export type { ConnectionTarget } from './services/connection/connectionHealth'
 
 // Components - Control
 export { ControlOverlay } from './components/control/ControlOverlay'

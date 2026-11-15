@@ -1,6 +1,6 @@
 {
   "name": "@ci-avatar/mobile",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Avatar Companion iOS and Android shells (Capacitor 8) around the web app",
@@ -11,7 +11,8 @@
     "sync:ios": "cap sync ios",
     "open:android": "cap open android",
     "open:ios": "cap open ios",
-    "test:native": "node --test tests/*.test.mjs"
+    "test:native": "node --test tests/*.test.mjs",
+    "notices": "node ../../scripts/third-party-notices.mjs --parts web,assets,android --gradle android --out android/app/src/main/assets/licenses"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",

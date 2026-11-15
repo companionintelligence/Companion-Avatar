@@ -1,3 +1,5 @@
 src-tauri/target/
 src-tauri/gen/
 src-tauri/icons/
+# Written by `npm run notices` (scripts/third-party-notices.mjs) and bundled as resources.
+src-tauri/notices/

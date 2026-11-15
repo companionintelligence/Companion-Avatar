@@ -1,4 +1,4 @@
-// Builds the Windows NSIS installer. The Authenticode certificate thumbprint is read from the
+// Builds the Windows NSIS and MSI installers. The Authenticode certificate thumbprint is read from the
 // environment and handed to the Tauri CLI as a temporary config file, so it never lands in a
 // tracked file.
 //
@@ -27,7 +27,7 @@ if (!unsigned && !/^[0-9a-fA-F]{40}$/.test(thumbprint)) {
   process.exit(2)
 }
 
-const args = ['exec', 'tauri', 'build', '--bundles', 'nsis']
+const args = ['exec', 'tauri', 'build', '--bundles', 'nsis,msi']
 const workDir = mkdtempSync(join(tmpdir(), 'avatar-desktop-'))
 try {
   if (!unsigned) {

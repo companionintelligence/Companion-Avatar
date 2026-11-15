@@ -84,10 +84,11 @@ although the skeptic refuted it as a defect.
 
 ## Owner decisions and blockers
 
-- **Avatar redistribution.** `assets/avatars/vrm/NOTICE.md` restricts redistribution for 9 of the 10
-  VRMs: seven say "Redistribution prohibited" and two say "author only". Only yuki allows it, and
-  not for commercial use. A store build needs licences or a slimmer avatar set. The slim set is not
-  built yet.
+- **Avatar redistribution.** Decided 2026-11-14. `NOTICE.md` records that the embedded terms restrict
+  redistribution for 9 of the 10 VRMs: seven say "Redistribution prohibited" and two say "author
+  only". The owner stated that Companion Intelligence has permission to redistribute the bundled
+  avatars, animations and props, so the native builds ship all of `assets/` as it is, with every file
+  credited in `NOTICE.md`. No slimmer avatar set is needed.
 - **Licence.** The repo is PolyForm Noncommercial 1.0.0. Whether a free store listing is allowed is a
   counsel decision.
 - **Identifiers.** `com.companionintelligence.avatar` is the iOS bundle ID of the live App Store app, and the Android applicationId matches it. The Android applicationId becomes permanent
@@ -96,8 +97,9 @@ although the skeptic refuted it as a defect.
   upload keystore and Play App Signing enrolment. Desktop needs Developer ID signing and notarisation,
   which has not been run because it uploads to Apple.
 - **Backend.** The bundles carry `VITE_API_BASE=https://bff.example.invalid`. Set it to the production
-  BFF origin, and allow these origins in `APP_ALLOWED_ORIGINS`: `capacitor://localhost` (iOS),
-  `https://localhost` (Android), `tauri://localhost` and `http://tauri.localhost` (desktop).
+  BFF origin. The BFF allows the Android (`https://localhost`) and desktop (`tauri://localhost`,
+  `http://tauri.localhost`, `https://tauri.localhost`) origins by default; add `capacitor://localhost`
+  (iOS) to `APP_ALLOWED_ORIGINS`.
 - **Review access.** Demo mode exists (the "Demo-only" session). Decide whether the review notes rely
   on it, as the guideline 4.2 argument.
 - **Listing and policy.** Privacy policy and support URLs, and listing copy. The "fully local" claim
@@ -105,8 +107,9 @@ although the skeptic refuted it as a defect.
 - **AI disclosures.** iOS guideline 5.1.2(i) needs a data-sharing disclosure. For Play's
   generative-AI reporting, confirm the current policy text, since the page checked did not state an
   in-app flag duty.
-- **Android backup.** `allowBackup` is true, so web storage is backed up. Set it false or add
-  data-extraction rules.
+- **Android backup.** Done: `allowBackup` is false from v0.2.0, so web storage is no longer backed up
+  to Google. Device-to-device transfer on Android 12 and later is unaffected; add data-extraction
+  rules if that matters.
 - **Size.** The iOS app is 257 MiB, of which the VRMs are 141.6 MB. The Play AAB is 181 MB, under the
   200 MB cellular warning.
 - **Usage strings.** iOS needs an `AudioData` declaration if `VITE_STT_REMOTE=true`. It is off in this

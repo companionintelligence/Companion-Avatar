@@ -1,6 +1,6 @@
 # CLAUDE.md — CI-Spatial-Companion-WebXR
 
-> **Private & Confidential — Property of Lifescope Inc. Do not distribute.**
+> Public repository: [companionintelligence/Companion-Avatar](https://github.com/companionintelligence/Companion-Avatar), licensed under the PolyForm Noncommercial License 1.0.0.
 
 ## Platform role
 
@@ -78,6 +78,6 @@ custom domain and DNS: `docs/DEPLOYMENT.md`.
 
 Multiple AI agents work these repos in parallel. Never use `git reset --hard`, `git clean -f`, or any destructive git command without explicit confirmation from the user.
 
-## Confidentiality
+## Licence
 
-Private & Confidential — Property of Lifescope Inc. Do not distribute.
+This repository is public. Its code is licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE](LICENSE)); the bundled third-party avatars, animations and props keep their own terms ([NOTICE.md](NOTICE.md)).

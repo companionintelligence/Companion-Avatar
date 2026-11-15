@@ -2,7 +2,7 @@
 
 Checked 2026-11-02 on branch `feat/native-shells-face-to-voice` in the native-shells worktree. Nothing was uploaded or submitted. No Play Console account, upload key or certificate was created. Signing was tested with a throwaway keystore in the scratchpad, which was deleted afterwards.
 
-Identifiers and levels: applicationId and namespace `com.companionintelligence.avatar` (same as iOS, see below), app name "Avatar Companion", versionCode 1, versionName 1.0, minSdk 24, compileSdk 36, targetSdk 36.
+Identifiers and levels: applicationId and namespace `com.companionintelligence.avatar` (same as iOS, see below), app name "Avatar Companion", versionCode 1, versionName 1.0 (versionCode 2, versionName 0.2.0 from release v0.2.0), minSdk 24, compileSdk 36, targetSdk 36.
 
 ## Ready
 
@@ -34,20 +34,20 @@ Identifiers and levels: applicationId and namespace `com.companionintelligence.a
 7. **Ads declaration.** "Contains ads: no", based on the checks above. Recheck before each release.
 8. **Privacy policy URL.** The owner or counsel supplies it. It must name the BFF, the LLM providers, the microphone use and the chat data.
 9. **Account deletion.** Not triggered by the current code. No sign-in code was found in `apps/web/src` or `packages/core/src`. Revisit if CI-Hub sign-in is added.
-10. **App access for reviewers.** Demo path: launch, the "Start your companion" sheet, "Check connection" (reports Demo-only), Skip, then type a message. The avatar answers from the local demo responder. The Android run did not go through this path. Live path: the store build needs a production `VITE_API_BASE`, and the proxy's `APP_ALLOWED_ORIGINS` must include `https://localhost`. That is the Android origin. The iOS origin is `capacitor://localhost`.
+10. **App access for reviewers.** Demo path: launch, the "Start your companion" sheet, "Check connection" (reports Demo-only), Skip, then type a message. The avatar answers from the local demo responder. The Android run did not go through this path. Live path: the store build needs a production `VITE_API_BASE`, or the reviewer picks a server in Settings. The proxy allows `https://localhost`, the Android origin, by default. The iOS origin is `capacitor://localhost`.
 11. **Generative-AI reporting.** The task cites the mobile assessment for an in-app reporting requirement. That assessment is not in this checkout, and it was not found in the top four levels of CI-Engineering. Play's AI-Generated Content policy page (fetched 2026-11-02) asks developers to stop offensive output from generative AI apps. The text I could read does not state an in-app report or flag duty. A press report of a 2023 Play policy update says generative AI apps must let users flag objectionable output in the app. Owner or counsel: check the current Play Developer Program Policy text. If a flag control is required, add one to AI replies. It is not built.
-12. **Rights and licence blockers.** The same as iOS. See the Blockers section of `apps/mobile/STORE-PREP-IOS.md`. Avatar redistribution: 9 of the 10 VRMs restrict it. GLB licences need review, and `LiamCES.glb` and `LiamCES2.glb` name a person, so consent is needed. PolyForm Noncommercial sits uneasily with a free public listing. The bundle has the placeholder origin `https://bff.example.invalid`. The on-device model downloads weights from huggingface.co.
+12. **Rights and licence blockers.** The same as iOS. See the Blockers section of `apps/mobile/STORE-PREP-IOS.md`. Avatar redistribution was decided on 2026-11-14: the owner stated it has permission to redistribute the bundled avatars, animations and props, so the APK ships all of `assets/` as it is, credited in `NOTICE.md`. PolyForm Noncommercial sits uneasily with a free public listing. The bundle has the placeholder origin `https://bff.example.invalid`. The on-device model downloads weights from huggingface.co.
 13. **Size.** The unsigned bundle is 181.1 MB, about 19 MB under the 200 MB cellular warning in Play's documentation. That threshold applies to the compressed download, which this figure approximates. Play's limits are a 500 MB base module, a 4 GB cumulative total for install-time content, and a 100 MB cap on APK uploads, so upload the AAB. The VRMs are 141.6 MB decimal (per the iOS note). Removing the restricted avatars would take the bundle well under the warning.
 14. **Track.** Start with internal testing and the pre-launch report. The owner approves each upload. Bump versionCode on every upload.
 
 ## Blockers (owner or counsel)
 
-Items 11 and 12 above, plus the size choice in item 13. No native change resolves them.
+Item 11 and the licence question in item 12, plus the size choice in item 13. No native change resolves them. The avatar redistribution part of item 12 was decided on 2026-11-14.
 
 ## Web-side changes for the lead
 
 1. `https://localhost/config.json` is requested on every launch and is not in `apps/web/dist`. The WebView logs "Unable to open asset URL". Add the file, or make the fetch fall back quietly.
-2. API base. The Android shell loads `https://localhost`. Store builds need the production BFF origin in `VITE_API_BASE`, and the proxy's `APP_ALLOWED_ORIGINS` must include `https://localhost`.
+2. API base. The Android shell loads `https://localhost`. Store builds need the production BFF origin in `VITE_API_BASE`. The proxy allows `https://localhost` by default.
 3. The bundle still has the placeholder origin `https://bff.example.invalid` (per the iOS note; the same bundle file is used here).
 4. Console noise from the avatar clips: `THREE.PropertyBinding: No target node found for track` for hand and eye end bones, and `[avatar] emote targets with no canonical mapping: happy, angry, sad, surprised, relaxed, neutral, blink`.
 5. A single tap on "Enable Mic" on the emulator did not raise a permission prompt. The native permission path was checked directly through the WebView with `getUserMedia`. Check the talk control's flow.
@@ -57,7 +57,7 @@ Items 11 and 12 above, plus the size choice in item 13. No native change resolve
 
 ## Native follow-ups
 
-- `android:allowBackup="true"` lets Android back up app data, including web storage, to Google's backup service. Decide whether conversation data should be backed up. Then set `allowBackup="false"`, or add data-extraction rules.
+- Done in v0.2.0: `android:allowBackup="false"`, so Android no longer backs up the app's data (web storage included) to Google's backup service. The app does not depend on backup: it has no backup agent, and its settings live in the WebView's storage. On Android 12 and later this setting does not stop a device-to-device transfer; add `dataExtractionRules` if that should be blocked too.
 
 ## Not verified
 

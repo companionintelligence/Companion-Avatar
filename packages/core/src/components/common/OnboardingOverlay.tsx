@@ -2,6 +2,7 @@ import { useMemo, type CSSProperties } from 'react'
 import { useXRLayout } from '../../utils/useXRLayout'
 import { type ActivationState, type LLMProvider } from '../../services/llm/config/llmConfig'
 import { useConnectionCheck } from '../../services/connection/useConnectionCheck'
+import type { ConnectionTarget } from '../../services/connection/connectionHealth'
 import { ConnectionStatusPanel } from './ConnectionStatusPanel'
 
 interface OnboardingOverlayProps {
@@ -10,6 +11,8 @@ interface OnboardingOverlayProps {
   onSkip: () => void
   activationState?: ActivationState
   llmProvider?: LLMProvider
+  /** The server and model saved for that provider; see `connectionTargetFor`. */
+  llmTarget?: ConnectionTarget
   onActivationStateChange?: (state: ActivationState) => void
 }
 
@@ -19,12 +22,14 @@ export const OnboardingOverlay = ({
   onSkip,
   activationState = 'unverified',
   llmProvider = 'proxy',
+  llmTarget,
   onActivationStateChange
 }: OnboardingOverlayProps) => {
   const { isXR } = useXRLayout()
   const { healthState, health, healthError, checkConnection } = useConnectionCheck(
     llmProvider,
-    onActivationStateChange
+    onActivationStateChange,
+    llmTarget
   )
 
   const cardStyle = useMemo<CSSProperties>(

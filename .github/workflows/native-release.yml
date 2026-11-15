@@ -1,0 +1,704 @@
+name: Native release
+
+# Builds the Avatar Companion desktop installers and the Android APK from one commit and
+# publishes them as a GitHub pre-release, with LICENSE, THIRD-PARTY-NOTICES.txt and
+# SHA256SUMS.txt. Manual dispatch only, like every workflow in this repo (docs/CI.md):
+#
+#   gh workflow run native-release.yml --repo companionintelligence/Companion-Avatar \
+#     --ref main -f tag=v0.2.0 -f android_signing=auto
+#
+# What a release contains:
+#   Windows  NSIS installer (.exe) and .msi, not code-signed.
+#   macOS    one universal .dmg (Apple silicon and Intel), ad-hoc signed by
+#            bundle.macOS.signingIdentity "-", not notarized.
+#   Linux    .deb and .rpm, built on Ubuntu 22.04 against WebKitGTK 4.1. No AppImage: it would
+#            bundle the LGPL WebKitGTK and GTK libraries.
+#   Android  a release APK, not debuggable. android_signing picks the key:
+#              auto       the keystore secrets when all four are set, else a throwaway key
+#              keystore   the keystore secrets; the run fails if one is missing
+#              throwaway  a key made in the job with keytool and never stored
+#              skip       no Android build in this release
+#            The file name says which key signed it (...-keystore-signed.apk or
+#            ...-throwaway-signed.apk), and the release notes give its certificate.
+#   Always   LICENSE, THIRD-PARTY-NOTICES.txt (generated from the lockfiles) and SHA256SUMS.txt.
+#   iOS is not built here; it stays with the owner.
+#
+# The tag must not exist yet, and no release, published or draft, may use it: the release creates
+# the tag on the commit that was built. prepare checks this before the builds, and the publish job
+# checks again just before it publishes. The tag's X.Y.Z must equal the desktop version
+# (apps/desktop/src-tauri/tauri.conf.json) and the Android versionName
+# (apps/mobile/android/app/build.gradle).
+#
+# Secrets, only for android_signing keystore (or auto):
+#   AVATAR_KEYSTORE_BASE64    the upload keystore (JKS or PKCS12), base64-encoded
+#   AVATAR_KEYSTORE_PASSWORD  its store password
+#   AVATAR_KEY_ALIAS          the alias of the key in it
+#   AVATAR_KEY_PASSWORD       that key's password (the store password again for PKCS12)
+# The Android job decodes the keystore into the runner's temp folder and hands the four values to
+# apps/mobile/android/app/build.gradle as KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS and
+# KEY_PASSWORD, the names it reads. The key never enters the checkout and is deleted after the
+# build.
+#
+# The repository is public and anyone can unpack these binaries, so the builds are keyless: no
+# VITE_* or APP_* build variable at all, so no API key, no Sentry DSN and no server address. The
+# apps start in demo mode, and a user points them at their own server in Settings.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to create for the pre-release, e.g. v0.2.0. It must not exist yet.
+        required: true
+        type: string
+      android_signing:
+        description: Android signing key
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - keystore
+          - throwaway
+          - skip
+
+permissions:
+  contents: write
+
+concurrency:
+  group: native-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.28.2'
+  # Inputs reach scripts through the environment, never by interpolation into a script.
+  TAG: ${{ inputs.tag }}
+  # scripts/third-party-notices.mjs fails on any licence it cannot account for.
+  AVATAR_NOTICES_STRICT: '1'
+
+jobs:
+  prepare:
+    name: Check the tag, build the web app and the notices
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the tag and the app versions
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::The tag must look like v0.2.0 or v0.2.0-rc.1, not '$TAG'."
+            exit 1
+          fi
+          version="${TAG#v}"
+          core="${version%%-*}"
+          desktop="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          android="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]+"([^"]+)".*/\1/p' apps/mobile/android/app/build.gradle)"
+          echo "tag $TAG, desktop $desktop, Android $android"
+          if [ "$desktop" != "$core" ]; then
+            echo "::error::$TAG does not match the desktop version $desktop (apps/desktop/src-tauri/tauri.conf.json)."
+            exit 1
+          fi
+          if [ "$android" != "$core" ]; then
+            echo "::error::$TAG does not match the Android versionName $android (apps/mobile/android/app/build.gradle)."
+            exit 1
+          fi
+          # The release creates the tag on the commit built here, and gh release create ignores
+          # --target for a tag that exists, so an existing tag could point anywhere. With
+          # --exit-code, git ls-remote exits 0 when the tag exists and 2 when it does not; any other
+          # status is a failed lookup, which must not pass for "no such tag". The publish job checks
+          # again just before it publishes.
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || status=$?
+          case "$status" in
+            0) echo "::error::The tag $TAG already exists. Pick a new tag."; exit 1 ;;
+            2) ;;
+            *) echo "::error::git ls-remote exited with $status, so it is not known whether the tag $TAG exists."; exit 1 ;;
+          esac
+          # A failed listing stops here rather than reading as "no release". GitHub lists drafts only
+          # to a token that can push, which this job's cannot; the publish job's can.
+          if ! releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')"; then
+            echo "::error::Could not list the releases, so it is not known whether one for $TAG exists."
+            exit 1
+          fi
+          if grep -Fxq -- "$TAG" <<< "$releases"; then
+            echo "::error::A release for $TAG already exists."
+            exit 1
+          fi
+          echo "version=$core" >> "$GITHUB_OUTPUT"
+
+      - name: Keyless build
+        run: |
+          set -euo pipefail
+          names="$(env | cut -d= -f1 | grep -E '^(VITE|APP)_' || true)"
+          if [ -n "$names" ]; then
+            echo "::error::These build variables are set: $names. Native builds must carry no key, token or server address."
+            exit 1
+          fi
+          envfiles="$(git ls-files 'apps/web/.env*' | grep -v '\.example$' || true)"
+          if [ -n "$envfiles" ]; then
+            echo "::error::Vite would read these committed env files into the build: $envfiles"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: pnpm
+        run: npm install --global "pnpm@$PNPM_VERSION"
+
+      - name: Install the workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests and the shells' config tests
+        run: |
+          set -euo pipefail
+          pnpm test
+          pnpm --filter @ci-avatar/desktop test:native
+          pnpm --filter @ci-avatar/mobile test:native
+
+      # Built once, here, and handed to every app job, so every app carries the same bundle.
+      - name: Build the web app
+        run: pnpm --filter @ci-avatar/web build
+
+      - name: Check the web app carries no key, DSN or server address
+        run: |
+          set -euo pipefail
+          dist=apps/web/dist
+          test -f "$dist/index.html"
+          if [ -e "$dist/config.json" ]; then
+            echo "::error::dist/config.json would fix a server address into the apps."
+            exit 1
+          fi
+          # Same check as test.yml: with no DSN the Sentry SDK must fold out of the bundle.
+          if grep -rlE "captureException|ingest\.sentry\.io" "$dist" --include='*.js'; then
+            echo "::error::The Sentry SDK is in the bundle."
+            exit 1
+          fi
+          for file in avatars/25-1-3_CI_model_male_Greg.glb avatars/humgen-aria-01.vrm avatars/vrm/yuki.vrm \
+            animations/Waving.glb animations/vrm/idle_loop.vrma props/xerox-alto.glb; do
+            test -f "$dist/assets/$file" || { echo "::error::assets/$file is not in the bundle."; exit 1; }
+          done
+          du -sh "$dist"
+
+      # `cargo metadata` needs a toolchain; it lists the desktop crates for every target from here.
+      - name: Rust
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Third-party notices for the web app, the assets and the desktop app
+        run: |
+          set -euo pipefail
+          node scripts/third-party-notices.mjs --parts web --json notices/web.json
+          node scripts/third-party-notices.mjs --parts assets --json notices/assets.json
+          node scripts/third-party-notices.mjs --parts desktop --json notices/desktop.json
+          node scripts/third-party-notices.mjs --from notices/web.json --from notices/assets.json \
+            --from notices/desktop.json --out notices/desktop-app
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: apps/web/dist
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 3
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notices
+          path: notices
+          if-no-files-found: error
+          retention-days: 3
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            build-args: --bundles nsis,msi
+            target-dir: release
+          - name: macOS
+            os: macos-latest
+            build-args: --target universal-apple-darwin --bundles dmg
+            rust-targets: aarch64-apple-darwin x86_64-apple-darwin
+            target-dir: universal-apple-darwin/release
+          - name: Linux
+            os: ubuntu-22.04
+            build-args: --bundles deb,rpm
+            target-dir: release
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAURI_DIR: apps/desktop/src-tauri
+      BUNDLE: apps/desktop/src-tauri/target/${{ matrix.target-dir }}/bundle
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: apps/web/dist
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notices
+          path: notices
+
+      # tauri.conf.json bundles these two files as resources.
+      - name: Put the notices where the bundle takes them from
+        run: |
+          set -euo pipefail
+          mkdir -p "$TAURI_DIR/notices"
+          cp notices/desktop-app/THIRD-PARTY-NOTICES.txt notices/desktop-app/LICENSE.txt "$TAURI_DIR/notices/"
+
+      - name: WebKitGTK 4.1 and the other Linux build packages
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev build-essential file xvfb rpm
+
+      - name: Rust
+        env:
+          RUST_TARGETS: ${{ matrix.rust-targets }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          if [ -n "$RUST_TARGETS" ]; then rustup target add $RUST_TARGETS; fi
+          rustc --version
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: pnpm and the Tauri CLI
+        run: |
+          set -euo pipefail
+          npm install --global "pnpm@$PNPM_VERSION"
+          pnpm install --frozen-lockfile --filter @ci-avatar/desktop
+
+      # The web app is already built (prepare), so the Tauri build skips its beforeBuildCommand.
+      - name: Build the installers
+        env:
+          BUILD_ARGS: ${{ matrix.build-args }}
+        run: |
+          set -euo pipefail
+          printf '%s' '{"build":{"beforeBuildCommand":""}}' > "$RUNNER_TEMP/prebuilt-web.json"
+          cd apps/desktop
+          pnpm run icons
+          pnpm exec tauri build --ci --config "$RUNNER_TEMP/prebuilt-web.json" $BUILD_ARGS
+
+      - name: Check the macOS app
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          app="$BUNDLE/macos/Avatar Companion.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | tee "$RUNNER_TEMP/codesign.txt"
+          grep -q 'Signature=adhoc' "$RUNNER_TEMP/codesign.txt"
+          exe="$(find "$app/Contents/MacOS" -type f -perm -u+x -print -quit)"
+          archs="$(lipo -archs "$exe")"
+          echo "$exe: $archs"
+          case " $archs " in *" x86_64 "*) ;; *) echo "::error::No x86_64 slice."; exit 1 ;; esac
+          case " $archs " in *" arm64 "*) ;; *) echo "::error::No arm64 slice."; exit 1 ;; esac
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
+          test -f "$app/Contents/Resources/THIRD-PARTY-NOTICES.txt"
+          test -f "$app/Contents/Resources/LICENSE.txt"
+          hdiutil verify "$BUNDLE"/dmg/*.dmg
+
+      - name: Check the Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          deb="$(ls "$BUNDLE"/deb/*.deb)"
+          rpm="$(ls "$BUNDLE"/rpm/*.rpm)"
+          dpkg-deb --field "$deb" Package Version Depends
+          dpkg-deb --contents "$deb" > "$RUNNER_TEMP/deb.txt"
+          rpm -qp --info "$rpm"
+          rpm -qp --requires "$rpm"
+          rpm -qlp "$rpm" > "$RUNNER_TEMP/rpm.txt"
+          for listing in "$RUNNER_TEMP/deb.txt" "$RUNNER_TEMP/rpm.txt"; do
+            grep -q 'THIRD-PARTY-NOTICES.txt' "$listing"
+            grep -q 'LICENSE.txt' "$listing"
+          done
+
+      - name: Check the Windows installers' inputs
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          test -f "$TAURI_DIR/target/release/THIRD-PARTY-NOTICES.txt"
+          test -f "$TAURI_DIR/target/release/LICENSE.txt"
+          ls -la "$BUNDLE"/nsis "$BUNDLE"/msi
+
+      - name: Start the app and check it stays up for 15 seconds
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Windows) exe="$TAURI_DIR/target/release/avatar-companion-desktop.exe" ;;
+            Linux) exe="$TAURI_DIR/target/release/avatar-companion-desktop" ;;
+            macOS) exe="$(find "$BUNDLE/macos/Avatar Companion.app/Contents/MacOS" -type f -perm -u+x -print -quit)" ;;
+          esac
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a "$exe" & else "$exe" & fi
+          pid=$!
+          sleep 15
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || true
+            echo "::error::The app exited within 15 seconds of starting."
+            exit 1
+          fi
+          echo "Still running after 15 seconds."
+          case "$RUNNER_OS" in
+            Windows) taskkill //F //T //IM avatar-companion-desktop.exe || true ;;
+            *) pkill -f avatar-companion-desktop || true ;;
+          esac
+
+      - name: Collect the installers
+        env:
+          PLATFORM: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # one <release file name> <matches...>: exactly one built file must match.
+          one() {
+            local name="$1"
+            shift
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "::error::Expected one file for $name, found: $*"
+              exit 1
+            fi
+            cp "$1" "release/$name"
+          }
+          base="avatar-companion-$TAG"
+          case "$PLATFORM" in
+            Windows)
+              one "$base-windows-x64-setup.exe" "$BUNDLE"/nsis/*-setup.exe
+              one "$base-windows-x64.msi" "$BUNDLE"/msi/*.msi
+              ;;
+            macOS)
+              one "$base-macos-universal.dmg" "$BUNDLE"/dmg/*.dmg
+              ;;
+            Linux)
+              one "$base-linux-amd64.deb" "$BUNDLE"/deb/*.deb
+              one "$base-linux-x86_64.rpm" "$BUNDLE"/rpm/*.rpm
+              ;;
+          esac
+          ls -la release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-${{ matrix.name }}
+          path: release
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 3
+
+  android:
+    name: Android (${{ inputs.android_signing }})
+    needs: prepare
+    if: inputs.android_signing != 'skip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: apps/web/dist
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notices
+          path: notices
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The runner image has the Android SDK; this adds the platform and build tools AGP 8.13 uses.
+      - name: Android SDK packages
+        run: |
+          set -euo pipefail
+          sdkmanager="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: pnpm and Capacitor
+        run: |
+          set -euo pipefail
+          npm install --global "pnpm@$PNPM_VERSION"
+          pnpm install --frozen-lockfile --filter @ci-avatar/mobile
+
+      - name: Copy the web app into the Android project
+        run: pnpm --filter @ci-avatar/mobile exec cap sync android
+
+      # Gradle reports the libraries the release APK contains; the notices then go into the APK's
+      # assets, beside the web app.
+      - name: Third-party notices for the Android app
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          node ../../scripts/third-party-notices.mjs --from ../../notices/web.json --from ../../notices/assets.json \
+            --parts android --gradle android --json ../../notices/android.json \
+            --out android/app/src/main/assets/licenses
+
+      # The key lives in the runner's temp folder for this step only: decoded from the keystore
+      # secret, or made here and never stored. build.gradle signs only when all four values are set.
+      - name: Build the release APK
+        id: apk
+        working-directory: apps/mobile/android
+        env:
+          MODE: ${{ inputs.android_signing }}
+          SECRET_KEYSTORE_BASE64: ${{ secrets.AVATAR_KEYSTORE_BASE64 }}
+          SECRET_KEYSTORE_PASSWORD: ${{ secrets.AVATAR_KEYSTORE_PASSWORD }}
+          SECRET_KEY_ALIAS: ${{ secrets.AVATAR_KEY_ALIAS }}
+          SECRET_KEY_PASSWORD: ${{ secrets.AVATAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in AVATAR_KEYSTORE_BASE64 AVATAR_KEYSTORE_PASSWORD AVATAR_KEY_ALIAS AVATAR_KEY_PASSWORD; do
+            secret="SECRET_${name#AVATAR_}"
+            if [ -z "${!secret}" ]; then missing="$missing $name"; fi
+          done
+          mode="$MODE"
+          if [ "$mode" = auto ]; then
+            if [ -z "$missing" ]; then mode=keystore; else mode=throwaway; fi
+          fi
+          echo "Android signing: $mode"
+
+          keys="$RUNNER_TEMP/android-signing"
+          rm -rf "$keys"
+          mkdir -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+
+          case "$mode" in
+            keystore)
+              if [ -n "$missing" ]; then
+                echo "::error::android_signing=keystore needs all four secrets. Missing:$missing"
+                exit 1
+              fi
+              printf '%s' "$SECRET_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 --decode > "$keys/upload.keystore"
+              export KEYSTORE_PATH="$keys/upload.keystore"
+              export KEYSTORE_PASSWORD="$SECRET_KEYSTORE_PASSWORD"
+              export KEY_ALIAS="$SECRET_KEY_ALIAS"
+              export KEY_PASSWORD="$SECRET_KEY_PASSWORD"
+              ;;
+            throwaway)
+              THROWAWAY_PASSWORD="$(openssl rand -hex 32)"
+              echo "::add-mask::$THROWAWAY_PASSWORD"
+              export THROWAWAY_PASSWORD
+              keytool -genkeypair -noprompt -keystore "$keys/throwaway.p12" -storetype PKCS12 \
+                -alias throwaway -keyalg RSA -keysize 3072 -validity 9125 \
+                -dname "CN=Avatar Companion pre-release (throwaway key)" \
+                -storepass:env THROWAWAY_PASSWORD -keypass:env THROWAWAY_PASSWORD
+              export KEYSTORE_PATH="$keys/throwaway.p12"
+              export KEYSTORE_PASSWORD="$THROWAWAY_PASSWORD"
+              export KEY_ALIAS=throwaway
+              export KEY_PASSWORD="$THROWAWAY_PASSWORD"
+              ;;
+            *)
+              echo "::error::Unknown android_signing '$MODE'."
+              exit 1
+              ;;
+          esac
+
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Check the APK
+        run: |
+          set -euo pipefail
+          apk=apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$apk" ]; then
+            ls -la "$(dirname "$apk")" || true
+            echo "::error::No signed app-release.apk was built."
+            exit 1
+          fi
+          tools="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools/35.0.0"
+          "$tools/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apksigner.txt"
+          "$tools/aapt2" dump badging "$apk" > "$RUNNER_TEMP/badging.txt"
+          grep -E "^(package|application-label|uses-permission):" "$RUNNER_TEMP/badging.txt"
+          grep -q "package: name='com.companionintelligence.avatar'" "$RUNNER_TEMP/badging.txt"
+          grep -q "versionName='$VERSION'" "$RUNNER_TEMP/badging.txt"
+          grep -q "application-label:'Avatar Companion'" "$RUNNER_TEMP/badging.txt"
+          if grep -q 'application-debuggable' "$RUNNER_TEMP/badging.txt"; then
+            echo "::error::The APK is debuggable."
+            exit 1
+          fi
+          "$tools/aapt2" dump xmltree --file AndroidManifest.xml "$apk" > "$RUNNER_TEMP/manifest.txt"
+          grep -q 'allowBackup(0x01010280)=false' "$RUNNER_TEMP/manifest.txt"
+          # Listed into a file, not piped: `grep -q` stops at its first match, unzip then dies of
+          # SIGPIPE on its next write, and pipefail would fail the step on a good APK.
+          unzip -l "$apk" > "$RUNNER_TEMP/apk.txt"
+          for file in assets/licenses/THIRD-PARTY-NOTICES.txt assets/licenses/LICENSE.txt assets/public/index.html \
+            assets/public/assets/avatars/25-1-3_CI_model_male_Greg.glb assets/public/assets/avatars/vrm/yuki.vrm \
+            assets/public/assets/animations/vrm/idle_loop.vrma assets/public/assets/props/xerox-alto.glb; do
+            grep -Fq "   $file" "$RUNNER_TEMP/apk.txt" || { echo "::error::$file is not in the APK."; exit 1; }
+          done
+
+      - name: Collect the APK
+        env:
+          MODE: ${{ steps.apk.outputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            keystore) label=keystore-signed ;;
+            throwaway) label=throwaway-signed ;;
+            *) echo "::error::Unknown signing mode '$MODE'."; exit 1 ;;
+          esac
+          mkdir -p release
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+            "release/avatar-companion-$TAG-android-$label.apk"
+          cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt")"
+          test -n "$cert"
+          # Read by the publish job for the release notes; not a release file.
+          printf 'mode=%s\ncert=%s\n' "$MODE" "$cert" > release/android-signing.txt
+          cp notices/android.json release/android.json
+          ls -la release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android
+          path: release
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 3
+
+  publish:
+    name: Publish the pre-release
+    needs: [prepare, desktop, android]
+    # Only when every build that was asked for succeeded; android is skipped only by android_signing=skip.
+    if: >-
+      ${{ !cancelled() && needs.prepare.result == 'success' && needs.desktop.result == 'success' &&
+      (needs.android.result == 'success' || (needs.android.result == 'skipped' && inputs.android_signing == 'skip')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desktop-*
+          path: artifacts
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.android_signing != 'skip'
+        with:
+          name: android
+          path: artifacts/android
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notices
+          path: notices
+
+      - name: Assemble the release files
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp artifacts/desktop-*/* dist/
+          from=(--from notices/web.json --from notices/assets.json --from notices/desktop.json)
+          if [ -d artifacts/android ]; then
+            cp artifacts/android/*.apk dist/
+            from+=(--from artifacts/android/android.json)
+          fi
+          node scripts/third-party-notices.mjs "${from[@]}" --out "$RUNNER_TEMP/notices"
+          cp "$RUNNER_TEMP/notices/THIRD-PARTY-NOTICES.txt" dist/
+          cp LICENSE dist/LICENSE
+          (cd dist && sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS.txt")
+          mv "$RUNNER_TEMP/SHA256SUMS.txt" dist/SHA256SUMS.txt
+          ls -la dist
+          cat dist/SHA256SUMS.txt
+
+      - name: Write the release notes
+        run: |
+          set -euo pipefail
+          signing=()
+          if [ -f artifacts/android/android-signing.txt ]; then
+            signing=(--android-signing artifacts/android/android-signing.txt)
+          fi
+          node scripts/native-release-notes.mjs --dir dist --tag "$TAG" --version "$VERSION" \
+            --commit "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" "${signing[@]}" > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # prepare's checks again, right before publishing. The builds take a while, and "Re-run
+          # failed jobs" keeps prepare's earlier result; a tag made meanwhile would make
+          # gh release create ignore --target and publish these files under that tag's commit.
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || status=$?
+          case "$status" in
+            0) echo "::error::The tag $TAG exists now and may point at another commit than $GITHUB_SHA. Nothing was published."; exit 1 ;;
+            2) ;;
+            *) echo "::error::git ls-remote exited with $status, so it is not known whether the tag $TAG exists. Nothing was published."; exit 1 ;;
+          esac
+          # This job's token can push, so drafts are listed too, such as one left by a failed attempt.
+          if ! releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')"; then
+            echo "::error::Could not list the releases, so it is not known whether one for $TAG exists. Nothing was published."
+            exit 1
+          fi
+          if grep -Fxq -- "$TAG" <<< "$releases"; then
+            echo "::error::A release for $TAG exists now, perhaps a draft left by an earlier attempt. Delete it or pick a new tag. Nothing was published."
+            exit 1
+          fi
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Avatar Companion $VERSION (pre-release)" \
+            --notes-file "$RUNNER_TEMP/notes.md"

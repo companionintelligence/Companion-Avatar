@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isNativeShell } from './nativeShell'
+import { isDesktopShell, isNativeShell } from './nativeShell'
 
 describe('isNativeShell', () => {
   afterEach(() => {
@@ -28,5 +28,19 @@ describe('isNativeShell', () => {
   it('is true inside the Tauri desktop app', () => {
     vi.stubGlobal('window', { __TAURI_INTERNALS__: {} })
     expect(isNativeShell()).toBe(true)
+  })
+})
+
+describe('isDesktopShell', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('is true inside the Tauri desktop app only', () => {
+    expect(isDesktopShell()).toBe(false)
+    vi.stubGlobal('window', { Capacitor: { isNativePlatform: () => true } })
+    expect(isDesktopShell()).toBe(false)
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} })
+    expect(isDesktopShell()).toBe(true)
   })
 })

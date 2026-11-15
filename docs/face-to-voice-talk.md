@@ -53,7 +53,7 @@ Web build (`packages/core`):
 | Variable | Purpose |
 |---|---|
 | `VITE_TALK_ENABLED` | `true` shows the "Talk live" control. |
-| `VITE_API_BASE` | Native and desktop shells only: the proxy's origin, so `/api/talk/token` is reached. The proxy must list the shell's origin in `APP_ALLOWED_ORIGINS`. |
+| `VITE_API_BASE` | Native and desktop shells only: the proxy's origin, so `/api/talk/token` is reached. The proxy allows the desktop and Android apps' origins by default; the iOS app's (`capacitor://localhost`) must be listed in `APP_ALLOWED_ORIGINS`. |
 
 When `APP_TALK_ENABLED=true`, startup refuses to proceed if a required variable is missing or malformed. The error names the
 variable and never its value.

@@ -31,4 +31,4 @@ pnpm --filter @ci-avatar/web build
 - Package manager: **pnpm** (pinned by `package.json#packageManager`) — do not switch or mix with npm/yarn/bun.
 - Destructive git operations (`reset --hard`, `clean -f`) require explicit user confirmation.
 - Commits reference CI-Engineering issues.
-- All content is **private and confidential** — Property of Lifescope Inc.
+- The repository is public, under the PolyForm Noncommercial License 1.0.0 (`LICENSE`); third-party avatars, animations and props keep their own terms (`NOTICE.md`).

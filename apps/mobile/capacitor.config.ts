@@ -5,8 +5,9 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // `server.url`: a shell that loads the website instead would repeat the visionOS pattern the
 // App Store review flags. A store build must never set one.
 //
-// `appId` is provisional. The owner picks the store identifier before any upload, and an
-// Android applicationId is permanent once uploaded.
+// `appId` is final: it is the bundle ID of the live App Store app (apps/mobile/STORE-PREP-IOS.md),
+// and the Android applicationId matches it. Do not change it. An Android applicationId is also
+// permanent once an app is uploaded to Google Play.
 const config: CapacitorConfig = {
   appId: 'com.companionintelligence.avatar',
   appName: 'Avatar Companion',

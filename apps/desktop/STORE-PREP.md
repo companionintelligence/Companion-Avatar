@@ -2,7 +2,8 @@
 
 Written 2026-11-02 by the desktop track in the `native-shells` worktree of `CI-Spatial-Agent-Web`.
 Nothing here has been signed for distribution, notarized, uploaded or submitted to a store.
-Read the owner decisions at the end before any build leaves the owner's machine.
+Read the owner decisions at the end. Decision 5, which avatars, animations and props may ship, was
+made on 2026-11-14: all of them (see Payload).
 
 ## Status
 
@@ -18,7 +19,7 @@ Read the owner decisions at the end before any build leaves the owner's machine.
 | `src-tauri/Entitlements.plist` wired as `bundle.macOS.entitlements` | Wired. Debug build passes. Unsigned debug builds do not carry it |
 | `scripts/desktop-notarize.sh` | Written. Missing-config and identity checks tested. Nothing signed, nothing sent to Apple |
 | Windows NSIS target and thumbprint from the environment | Written. `scripts/desktop-build-windows.mjs` env checks tested on macOS. No Windows build |
-| Linux `deb` and `AppImage` targets | Written in `src-tauri/tauri.linux.conf.json`. Not built, no Linux host |
+| Linux `deb` and `rpm` targets (AppImage dropped in v0.2.0) | Written in `src-tauri/tauri.linux.conf.json`. Built by `native-release.yml` on ubuntu-22.04, not on a local host |
 | Icons | Validated: PNG sizes, ICNS and ICO structure, `iconutil` parses the ICNS |
 
 ## Web-side changes the lead needs
@@ -39,15 +40,16 @@ These are not in the desktop track and were not made here.
    prefixes `VITE_API_BASE` when it is set. The `apps/web/dist` snapshot was built without it, so
    `/api/chat`, `/api/stt`, `/api/tts`, `/api/talk/token` and `/api/config/telemetry` resolve against
    `tauri://localhost`. Build the bundle the shell loads with `VITE_API_BASE` set to the BFF's absolute
-   origin, and add `tauri://localhost` and `http://tauri.localhost` to the BFF's `APP_ALLOWED_ORIGINS`.
-   The first of these was not exercised at runtime.
+   origin. The BFF now allows `tauri://localhost`, `http://tauri.localhost` and
+   `https://tauri.localhost` by default (`APP_ORIGINS` in `apps/proxy/src/config.ts`). The first of
+   these was not exercised at runtime.
 3. No web change is needed for the CSP. The desktop CSP now allows `blob:` in `connect-src`.
 
 ## Distribution routes
 
 | | Direct (macOS Developer ID, Windows NSIS, Linux packages) | Mac App Store | Microsoft Store |
 | --- | --- | --- | --- |
-| Package | `.app` (in a DMG if wanted), NSIS `.exe`, `.deb`, `.AppImage` | `.pkg` from `productbuild`, sandboxed | MSIX (not verified here) |
+| Package | `.app` (in a DMG if wanted), NSIS `.exe` and `.msi`, `.deb`, `.rpm` | `.pkg` from `productbuild`, sandboxed | MSIX (not verified here) |
 | Signing | Developer ID Application, hardened runtime, notarized and stapled by `scripts/desktop-notarize.sh`. Authenticode for Windows via `WINDOWS_CERTIFICATE_THUMBPRINT` | Apple Distribution for the app and Mac Installer Distribution for the `.pkg`. The older "3rd Party Mac Developer" names also work. App Sandbox required | Partner Center signs MSIX for the store (not verified here) |
 | Review | None by Apple or Microsoft. Gatekeeper and SmartScreen warn on unsigned or unnotarized builds | Apple App Review. Guideline 4.2 (Minimum Functionality) is a rejection risk for a plain web wrapper | Microsoft Store certification |
 | Updates | Needs an updater and its own signing key (owner decision) | Store updates | Store updates |
@@ -55,6 +57,10 @@ These are not in the desktop track and were not made here.
 
 Current store rules and fees were not checked from this environment. Recheck the developer
 agreements before any submission.
+
+The GitHub pre-releases from `.github/workflows/native-release.yml` (v0.2.0 on) are the direct route
+without signing: Windows NSIS and MSI not code-signed, macOS ad-hoc signed and not notarized, Linux
+deb and rpm. Their release notes explain SmartScreen and Gatekeeper.
 
 ## Payload: third-party avatar models
 
@@ -65,14 +71,18 @@ Measured 2026-11-02 from `apps/web/dist` (read-only):
 - 82 model files (`.glb`, `.vrm`, `.gltf`, `.bin`) total 244.9 MB (233.5 MiB).
 - The 10 VRM files under `assets/avatars/vrm/` total 119.0 MB. `NOTICE.md` records their embedded
   terms: redistribution prohibited, author only, or no commercial use. Two are VRoid Hub terms.
-- `assets/avatars/humgen-aria-01.vrm` (22.6 MB) is first-party. The other GLB avatars total
-  51.4 MB. `NOTICE.md` says they carry no machine-readable licence and need review before any
-  redistribution.
+- `assets/avatars/humgen-aria-01.vrm` (22.6 MB) is Companion Intelligence's, made with Human
+  Generator 3D. The other GLB avatars total 51.4 MB. Twelve of them carry the glTF copyright
+  "Ready Player Me": Ready Player Me Avatar Creator output, published under CC BY-NC 4.0.
 
 Every desktop build copies all of `apps/web/dist` into the binary, so every build carries these
-files. Rule for this track: no build leaves the owner's machine (no upload, no shared installer, no
-TestFlight or store submission) until a slim store build exists. The slim build must leave out the
-restricted models and load avatars from a source the owner controls. It does not exist yet.
+files.
+
+**Decided 2026-11-14: ship them.** The owner stated on 2026-11-14 that Companion Intelligence
+has permission to redistribute the bundled avatars, animations and props, and decided that the
+native builds include all of `assets/` as it is. The earlier rule for this track (no build leaves
+the owner's machine until a slim store build leaves out the restricted models) is withdrawn, and no
+slim build is needed. `NOTICE.md` credits every file with its author, source and licence.
 
 ## WebXR
 
@@ -98,17 +108,18 @@ store listing.
 4. **Licence.** The repository licence is PolyForm Noncommercial 1.0.0, which restricts commercial
    use. Decide whether store distribution is allowed under it, paid or free, or whether a separate
    store licence is needed.
-5. **Third-party models.** Decide which models may ship. Under their embedded terms, none of the 10
-   VRM files under `assets/avatars/vrm/` may be redistributed for commercial use. The slim store build
-   needs replacements or a separate content source.
+5. **Third-party models.** Decided 2026-11-14. The owner stated that Companion Intelligence has
+   permission to redistribute the bundled avatars, animations and props, so every native build ships
+   all of `assets/` as it is. The files' own embedded terms (for the 10 VRMs: no redistribution, or
+   no commercial use) are kept in `NOTICE.md` as credit, beside that permission.
 6. **Updates.** Decide whether direct builds ship an updater. Tauri's updater needs a signing key that
    the owner generates and holds.
 7. **Privacy.** Decide the privacy policy URL and the store privacy answers for microphone use.
    `NSMicrophoneUsageDescription` is already in `Info.plist`. Check whether Apple's privacy manifest
    rules apply to this build.
 8. **Store review risk.** Apple Guideline 4.2 (Minimum Functionality) can reject an app that mainly
-   wraps a website, and the README says the shell adds no native features yet. Decide what native
-   value the Mac App Store build adds before submitting.
+   wraps a website, and the shell's only native behaviour so far is opening links in the system
+   browser. Decide what native value the Mac App Store build adds before submitting.
 9. **Emulator and API base.** Decide with the web owner that the desktop build skips the WebXR
    emulator and sets `VITE_API_BASE` (see Web-side changes).
 
@@ -120,8 +131,8 @@ From `apps/desktop`:
 pnpm exec tauri build --debug --bundles app --config '{"build":{"beforeBuildCommand":""}}'   # debug .app, web bundle not rebuilt
 scripts/desktop-notarize.sh --check                                                         # environment check only, nothing signed
 scripts/desktop-notarize.sh "src-tauri/target/release/bundle/macos/Avatar Companion.app"    # sign, notarize, staple (needs owner credentials)
-node scripts/desktop-build-windows.mjs                                                      # Windows NSIS, on Windows, needs WINDOWS_CERTIFICATE_THUMBPRINT
-pnpm exec tauri build --bundles deb,appimage                                                # Linux, on Linux (not run here)
+node scripts/desktop-build-windows.mjs                                                      # Windows NSIS and MSI, on Windows, needs WINDOWS_CERTIFICATE_THUMBPRINT
+pnpm exec tauri build --bundles deb,rpm                                                     # Linux, on Linux (not run here)
 ```
 
 `scripts/desktop-notarize.sh` exits 2 and names the missing variables when they are not set, and it

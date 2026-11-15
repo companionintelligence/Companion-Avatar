@@ -2,7 +2,9 @@ apply plugin: 'com.android.application'
 
 // Release signing. The upload keystore comes from android/keystore.properties (gitignored; see
 // keystore.properties.example) or from the environment variables KEYSTORE_PATH, KEYSTORE_PASSWORD,
-// KEY_ALIAS and KEY_PASSWORD. With neither set, the release build stays unsigned.
+// KEY_ALIAS and KEY_PASSWORD. It applies only when all four are set; otherwise the release build
+// stays unsigned. .github/workflows/native-release.yml sets them from its own secrets, or from a
+// throwaway key it makes for the run.
 def signingValue(String propertyName, String envName) {
     def props = new Properties()
     def file = rootProject.file('keystore.properties')
@@ -15,6 +17,10 @@ def releaseStoreFile = signingValue('storeFile', 'KEYSTORE_PATH')
 def releaseStorePassword = signingValue('storePassword', 'KEYSTORE_PASSWORD')
 def releaseKeyAlias = signingValue('keyAlias', 'KEY_ALIAS')
 def releaseKeyPassword = signingValue('keyPassword', 'KEY_PASSWORD')
+def releaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+if (!releaseSigning && (releaseStoreFile || releaseStorePassword || releaseKeyAlias || releaseKeyPassword)) {
+    logger.warn('Release signing needs all of KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD (or keystore.properties); the release build stays unsigned.')
+}
 
 android {
     namespace = "com.companionintelligence.avatar"
@@ -23,8 +29,8 @@ android {
         applicationId "com.companionintelligence.avatar"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "0.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -34,7 +40,7 @@ android {
     }
     signingConfigs {
         release {
-            if (releaseStoreFile) {
+            if (releaseSigning) {
                 storeFile file(releaseStoreFile)
                 storePassword releaseStorePassword
                 keyAlias releaseKeyAlias
@@ -44,7 +50,7 @@ android {
     }
     buildTypes {
         release {
-            if (releaseStoreFile) {
+            if (releaseSigning) {
                 signingConfig signingConfigs.release
             }
             minifyEnabled false

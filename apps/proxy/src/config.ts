@@ -56,7 +56,36 @@ export interface ResolvedConfig {
    * way, so a permissive list cannot be used to ride a user's cookies.
    */
   allowedOrigins: string[]
+  /**
+   * The desktop and Android apps' origins (`APP_ORIGINS`), allowed in addition
+   * to `allowedOrigins`. Empty when `APP_ALLOW_NATIVE_APPS` is exactly `false`.
+   */
+  appOrigins: string[]
 }
+
+/**
+ * Where the desktop and Android apps serve their bundled web app from, so the
+ * origin their requests to this BFF carry:
+ *
+ *   tauri://localhost        desktop app on macOS and Linux (Tauri 2)
+ *   http://tauri.localhost   desktop app on Windows (WebView2)
+ *   https://tauri.localhost  desktop app on Windows if Tauri's useHttpsScheme is on
+ *   https://localhost        Android app (Capacitor's default androidScheme)
+ *
+ * They are allowed by default, so a user can point either app at their own BFF
+ * without configuring it. They are exact names, never patterns, and no web page
+ * can present them: the tauri scheme exists only inside an installed app, and a
+ * browser resolves *.localhost to the user's own machine, so only software
+ * already on that machine could carry one, and such software can call this BFF
+ * without CORS at all. CORS decides what a page may read, not who may call:
+ * it is not authentication. `APP_ALLOW_NATIVE_APPS=false` turns these off.
+ */
+export const APP_ORIGINS: readonly string[] = Object.freeze([
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'https://tauri.localhost',
+  'https://localhost'
+])
 
 /**
  * Normalize an origin for comparison against the `Origin` header the browser
@@ -133,7 +162,8 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     memoryGenerationUpstream: (env.APP_MEMORY_GENERATION_UPSTREAM ?? 'ollama') as UpstreamKind,
     port: Number(env.PORT ?? 8787),
     requestTimeoutMs: Number(env.APP_REQUEST_TIMEOUT_MS ?? 60000),
-    allowedOrigins: parseAllowedOrigins(env.APP_ALLOWED_ORIGINS)
+    allowedOrigins: parseAllowedOrigins(env.APP_ALLOWED_ORIGINS),
+    appOrigins: env.APP_ALLOW_NATIVE_APPS === 'false' ? [] : [...APP_ORIGINS]
   }
 }
 
