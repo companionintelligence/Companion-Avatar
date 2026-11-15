@@ -84,7 +84,7 @@ although the skeptic refuted it as a defect.
 
 ## Owner decisions and blockers
 
-- **Avatar redistribution.** `assets/avatars/vrm/NOTICE.md` restricts redistribution for 9 of the 10
+- **Avatar redistribution.** `NOTICE.md` records that the embedded terms restrict redistribution for 9 of the 10
   VRMs: seven say "Redistribution prohibited" and two say "author only". Only yuki allows it, and
   not for commercial use. A store build needs licences or a slimmer avatar set. The slim set is not
   built yet.

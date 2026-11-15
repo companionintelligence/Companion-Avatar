@@ -1,6 +1,6 @@
 # Spatial Companion — product video
 
-> **Private & Confidential — Property of Lifescope Inc. Do not distribute.**
+> Part of the public Companion-Avatar repository, under its PolyForm Noncommercial License 1.0.0 ([`LICENSE`](../LICENSE)).
 
 Generates a **16:9 desktop cut** and a **9:16 mobile cut** of Spatial Companion's FTUE and major
 screens, from this repo's own UI. Both are produced from [`storyboard.json`](storyboard.json).

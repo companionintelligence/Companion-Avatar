@@ -1,6 +1,6 @@
 # Spatial Companion — Product Improvement & Launch Plan
 
-> **Private & Confidential — Property of Lifescope Inc. Do not distribute.**
+> Part of the public Companion-Avatar repository, under its PolyForm Noncommercial License 1.0.0.
 > Owner: Liam Broza · Drafted 2026-07-04 · Horizon: H2 2026 → 2027
 
 ---

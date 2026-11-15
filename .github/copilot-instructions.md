@@ -39,4 +39,4 @@ pnpm --filter @ci-avatar/web build   # build
 - Use pnpm (pinned by `package.json#packageManager`); do not mix it with npm, yarn or bun.
 - Keep PRs small and linked to CI-Engineering issues.
 - Multiple agents may work this codebase simultaneously — never use destructive git operations.
-- All code is **private and confidential** — do not surface or transmit source beyond this session.
+- The repository is public, under the PolyForm Noncommercial License 1.0.0 (`LICENSE`). Keep secrets, keys and private hostnames out of it.

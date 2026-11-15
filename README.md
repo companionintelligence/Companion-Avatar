@@ -6,8 +6,8 @@
 
 <p align="center"><strong>WebXR and WebSpatial</strong></p>
 
-[![release](https://img.shields.io/badge/release-not%20published-757575?style=flat-square)](https://github.com/companionintelligence/CI-Spatial-Agent-Web/releases)
-[![platform](https://img.shields.io/badge/platform-WebXR%20%C2%B7%20visionOS%20%C2%B7%20Web-0a6358?style=flat-square)](https://github.com/companionintelligence/CI-Spatial-Agent-Web)
+[![release](https://img.shields.io/github/v/release/companionintelligence/Companion-Avatar?include_prereleases&style=flat-square&label=release)](https://github.com/companionintelligence/Companion-Avatar/releases)
+[![platform](https://img.shields.io/badge/platform-WebXR%20%C2%B7%20visionOS%20%C2%B7%20Web-0a6358?style=flat-square)](https://github.com/companionintelligence/Companion-Avatar)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0a6358?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/badge/chat-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/invite/yQp9hwpzAa)
 

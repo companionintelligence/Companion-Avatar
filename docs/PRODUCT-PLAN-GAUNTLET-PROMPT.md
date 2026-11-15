@@ -1,6 +1,6 @@
 # Product-plan Gauntlet Loop
 
-> Private & Confidential — Property of Lifescope Inc.
+> Part of the public Companion-Avatar repository, under its PolyForm Noncommercial License 1.0.0.
 
 This is a ready-to-paste prompt for Codex or Claude Code. It is adapted from the
 Gauntlet Loop method and grounded in this repository's existing product plan,

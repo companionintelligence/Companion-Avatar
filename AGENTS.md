@@ -34,6 +34,6 @@ pnpm --filter @ci-avatar/web build   # build
 - Commit messages: imperative mood, ≤ 72 chars.
 - Reference CI-Engineering issues in PRs (e.g. `Closes companionintelligence/CI-Engineering#32`).
 
-## Confidentiality
+## Licence
 
-Private & Confidential — Property of Lifescope Inc. Do not distribute.
+This repository is public. Its code is licensed under the PolyForm Noncommercial License 1.0.0 ([LICENSE](LICENSE)); the bundled third-party avatars, animations and props keep their own terms ([NOTICE.md](NOTICE.md)).
