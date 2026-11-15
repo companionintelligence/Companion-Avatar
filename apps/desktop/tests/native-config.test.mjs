@@ -8,6 +8,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(here, '../src-tauri/tauri.conf.json'), 'utf8'));
 const pkg = JSON.parse(await readFile(path.join(here, '../package.json'), 'utf8'));
 const cargoToml = await readFile(path.join(here, '../src-tauri/Cargo.toml'), 'utf8');
+const cargoLock = await readFile(path.join(here, '../src-tauri/Cargo.lock'), 'utf8');
+const mainRs = await readFile(path.join(here, '../src-tauri/src/main.rs'), 'utf8');
 
 test('Avatar desktop loads its bundled web app and not the hosted website', () => {
   assert.equal(config.productName, 'Avatar Companion');
@@ -32,6 +34,33 @@ test('Avatar desktop CSP lets the user pick a server on this computer or over HT
     assert.ok(connect.includes(source), `connect-src lacks ${source}`);
   }
   assert.ok(!connect.includes('http:') && !connect.includes('*'), 'connect-src must not allow every plain-http host');
+});
+
+test('links out of the app open in the system browser, and the window stays on the app', async () => {
+  // The window is built in Rust (src/main.rs), because the link handlers can only be attached to a
+  // builder; Tauri must not also create it from the config.
+  assert.equal(config.app.windows.length, 1);
+  const [main] = config.app.windows;
+  assert.equal(main.label, 'main');
+  assert.equal(main.create, false);
+  assert.match(mainRs, /WebviewWindowBuilder::from_config\(/);
+  assert.match(mainRs, /\.on_navigation\(/);
+  assert.match(mainRs, /\.on_new_window\(/);
+  assert.match(mainRs, /NewWindowResponse::Deny/);
+  assert.match(mainRs, /\.opener\(\)\.open_url\(/);
+  // The plugin's own click script would send target="_blank" links to its open_url command, which
+  // the page is not granted, so they would do nothing; on_new_window opens them instead.
+  assert.match(mainRs, /tauri_plugin_opener::Builder::new\(\)\s*\.open_js_links_on_click\(false\)\s*\.build\(\)/);
+  assert.doesNotMatch(mainRs, /tauri_plugin_opener::init\(\)/);
+  const capability = JSON.parse(await readFile(path.join(here, '../src-tauri/capabilities/default.json'), 'utf8'));
+  assert.deepEqual(capability.windows, ['main']);
+  assert.deepEqual(capability.permissions, ['core:default']);
+});
+
+test('the opener plugin is tauri-plugin-opener 2.7.3 in Cargo.toml and Cargo.lock', () => {
+  assert.match(cargoToml, /^tauri-plugin-opener = "2\.7\.3"$/m);
+  const locked = [...cargoLock.matchAll(/^\[\[package\]\]\r?\nname = "tauri-plugin-opener"\r?\nversion = "([^"]+)"/gm)].map((m) => m[1]);
+  assert.deepEqual(locked, ['2.7.3']);
 });
 
 test('desktop build generates all required platform icons', () => {

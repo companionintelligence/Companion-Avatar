@@ -1,9 +1,9 @@
 # Avatar Companion desktop app
 
 A Tauri 2 window around the web app that `apps/web` builds, for Windows, macOS and Linux. The web
-build is compiled into the binary (`frontendDist`), so the app loads no remote URL; the shell adds no
-native features. The window is the system WebView: WebView2 on Windows, WKWebView on macOS and
-WebKitGTK 4.1 on Linux.
+build is compiled into the binary (`frontendDist`), so the app loads no remote URL. The shell's one
+native behaviour is where links go ([Links](#links)). The window is the system WebView: WebView2 on
+Windows, WKWebView on macOS and WebKitGTK 4.1 on Linux.
 
 Version, identifier and bundles are in `src-tauri/tauri.conf.json`, with per-OS additions in
 `tauri.windows.conf.json` and `tauri.linux.conf.json`. `tests/native-config.test.mjs` pins them.
@@ -51,6 +51,21 @@ For a language model, open Settings, pick **Proxy** (your BFF's `https://<host>/
 - The content security policy lets the app reach servers over HTTPS and over plain HTTP on the same
   computer (`localhost`, `127.0.0.1`); `tests/native-config.test.mjs` pins that.
 - Ollama allows `tauri://localhost` by default. For the Windows app, set `OLLAMA_ORIGINS=http://tauri.localhost`.
+
+## Links
+
+The app's own pages stay in the window: `tauri://localhost`, `http(s)://tauri.localhost`, and the Vite
+dev server under `tauri dev`. Any other `http`, `https` or `mailto` link opens in the system browser or
+mail client, and the window stays where it was. That holds for a plain link, a `target="_blank"` link
+and `window.open` alike. Without it, a plain link would replace the app with the web page and leave no
+way back, and a `target="_blank"` link would do nothing.
+
+`src-tauri/src/main.rs` does this. The window is declared in `tauri.conf.json` with `create: false` and
+built in `setup()`, so that `on_navigation` and `on_new_window` can be attached to it; both hand the link
+to `tauri-plugin-opener` and cancel it, and no second app window ever opens. The plugin's own click
+script is turned off (`open_js_links_on_click(false)`): it would send `target="_blank"` links to the
+plugin's `open_url` command, which the page is not granted, so they would do nothing. `cargo test` (in
+`src-tauri`) checks the URL rules; `tests/native-config.test.mjs` checks the wiring.
 
 ## Limits
 

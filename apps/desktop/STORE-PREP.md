@@ -118,8 +118,8 @@ store listing.
    `NSMicrophoneUsageDescription` is already in `Info.plist`. Check whether Apple's privacy manifest
    rules apply to this build.
 8. **Store review risk.** Apple Guideline 4.2 (Minimum Functionality) can reject an app that mainly
-   wraps a website, and the README says the shell adds no native features yet. Decide what native
-   value the Mac App Store build adds before submitting.
+   wraps a website, and the shell's only native behaviour so far is opening links in the system
+   browser. Decide what native value the Mac App Store build adds before submitting.
 9. **Emulator and API base.** Decide with the web owner that the desktop build skips the WebXR
    emulator and sets `VITE_API_BASE` (see Web-side changes).
 
