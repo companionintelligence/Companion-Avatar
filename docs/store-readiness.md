@@ -97,8 +97,9 @@ although the skeptic refuted it as a defect.
   upload keystore and Play App Signing enrolment. Desktop needs Developer ID signing and notarisation,
   which has not been run because it uploads to Apple.
 - **Backend.** The bundles carry `VITE_API_BASE=https://bff.example.invalid`. Set it to the production
-  BFF origin, and allow these origins in `APP_ALLOWED_ORIGINS`: `capacitor://localhost` (iOS),
-  `https://localhost` (Android), `tauri://localhost` and `http://tauri.localhost` (desktop).
+  BFF origin. The BFF allows the Android (`https://localhost`) and desktop (`tauri://localhost`,
+  `http://tauri.localhost`, `https://tauri.localhost`) origins by default; add `capacitor://localhost`
+  (iOS) to `APP_ALLOWED_ORIGINS`.
 - **Review access.** Demo mode exists (the "Demo-only" session). Decide whether the review notes rely
   on it, as the guideline 4.2 argument.
 - **Listing and policy.** Privacy policy and support URLs, and listing copy. The "fully local" claim

@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { parseAllowedOrigins, resolveAllowedOrigin } from '../src/config.js'
+import { APP_ORIGINS, parseAllowedOrigins, resolveAllowedOrigin, resolveConfig } from '../src/config.js'
 import { createApp } from '../src/server.js'
 
 const PAGES_ORIGIN = 'https://avatar.ci.computer'
+
+/**
+ * A GET route that answers from env alone. /api/health would do for CORS, but it
+ * probes the chat and TTS upstreams over the network first, which made these
+ * tests slow and, where host.docker.internal resolves, time out.
+ */
+const PROBE_FREE_ROUTE = '/api/config/telemetry'
 
 /**
  * These cases are what make the split deployment work: the static Cloudflare
@@ -22,7 +29,7 @@ describe('CORS — default (no APP_ALLOWED_ORIGINS)', () => {
   })
 
   it('sends no Access-Control-Allow-Origin', async () => {
-    const res = await createApp().request('/api/health', {
+    const res = await createApp().request(PROBE_FREE_ROUTE, {
       headers: { Origin: PAGES_ORIGIN }
     })
 
@@ -47,7 +54,7 @@ describe('CORS — default (no APP_ALLOWED_ORIGINS)', () => {
     // deployment that asked for no CORS at all, and it makes a shared cache key
     // on a header the response does not actually depend on. So the middleware is
     // skipped outright when the allowlist is empty, and this is what proves it.
-    const res = await createApp().request('/api/health', {
+    const res = await createApp().request(PROBE_FREE_ROUTE, {
       headers: { Origin: PAGES_ORIGIN }
     })
 
@@ -72,7 +79,7 @@ describe('CORS — with an allowlist', () => {
   it('echoes an allowlisted origin', async () => {
     vi.stubEnv('APP_ALLOWED_ORIGINS', PAGES_ORIGIN)
 
-    const res = await createApp().request('/api/health', {
+    const res = await createApp().request(PROBE_FREE_ROUTE, {
       headers: { Origin: PAGES_ORIGIN }
     })
 
@@ -82,7 +89,7 @@ describe('CORS — with an allowlist', () => {
   it('refuses an origin that is not listed', async () => {
     vi.stubEnv('APP_ALLOWED_ORIGINS', PAGES_ORIGIN)
 
-    const res = await createApp().request('/api/health', {
+    const res = await createApp().request(PROBE_FREE_ROUTE, {
       headers: { Origin: 'https://attacker.example' }
     })
 
@@ -112,7 +119,7 @@ describe('CORS — with an allowlist', () => {
     vi.stubEnv('APP_ALLOWED_ORIGINS', `${PAGES_ORIGIN},${preview}`)
 
     for (const origin of [PAGES_ORIGIN, preview]) {
-      const res = await createApp().request('/api/health', { headers: { Origin: origin } })
+      const res = await createApp().request(PROBE_FREE_ROUTE, { headers: { Origin: origin } })
       expect(res.headers.get('access-control-allow-origin')).toBe(origin)
     }
   })
@@ -120,7 +127,7 @@ describe('CORS — with an allowlist', () => {
   it('never allows credentials, so a permissive list cannot ride browser cookies', async () => {
     vi.stubEnv('APP_ALLOWED_ORIGINS', '*')
 
-    const res = await createApp().request('/api/health', {
+    const res = await createApp().request(PROBE_FREE_ROUTE, {
       headers: { Origin: PAGES_ORIGIN }
     })
 
@@ -167,5 +174,112 @@ describe('resolveAllowedOrigin', () => {
 
   it('echoes the caller origin for a wildcard rather than returning "*"', () => {
     expect(resolveAllowedOrigin(PAGES_ORIGIN, ['*'])).toBe(PAGES_ORIGIN)
+  })
+})
+
+/**
+ * The desktop and Android apps serve their bundled web app from these origins,
+ * and a user can point either app at their own BFF. A stock BFF (no
+ * APP_ALLOWED_ORIGINS) must answer them, and must still answer everything else
+ * exactly as the "default" block above pins.
+ */
+describe('CORS — the desktop and Android apps', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('names the four app origins exactly', () => {
+    expect([...APP_ORIGINS]).toEqual([
+      'tauri://localhost',
+      'http://tauri.localhost',
+      'https://tauri.localhost',
+      'https://localhost'
+    ])
+    expect(resolveConfig({}).appOrigins).toEqual([...APP_ORIGINS])
+  })
+
+  it.each([...APP_ORIGINS])('echoes %s with no APP_ALLOWED_ORIGINS set', async (origin) => {
+    const res = await createApp().request(PROBE_FREE_ROUTE, { headers: { Origin: origin } })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('access-control-allow-origin')).toBe(origin)
+    expect(res.headers.get('vary')).toContain('Origin')
+    expect(res.headers.get('access-control-allow-credentials')).toBeNull()
+  })
+
+  it.each([...APP_ORIGINS])('answers a chat preflight from %s', async (origin) => {
+    const res = await createApp().request('/api/chat', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: origin,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type'
+      }
+    })
+
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe(origin)
+    expect(res.headers.get('access-control-allow-methods')).toContain('POST')
+    expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('content-type')
+  })
+
+  it.each([
+    'tauri://evil.example',
+    'tauri://localhost.evil.example',
+    'http://tauri.localhost.evil.example',
+    'https://tauri.localhost:8443',
+    'http://tauri.localhost:8080',
+    'https://localhost:5173',
+    'http://localhost',
+    'https://evil-localhost.example',
+    'capacitor://localhost',
+    'null'
+  ])('treats the lookalike %s like any other origin: no CORS headers at all', async (origin) => {
+    const res = await createApp().request(PROBE_FREE_ROUTE, { headers: { Origin: origin } })
+
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+    expect(res.headers.get('vary')).toBeNull()
+
+    const preflight = await createApp().request('/api/chat', {
+      method: 'OPTIONS',
+      headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' }
+    })
+    expect(preflight.status).toBe(404)
+    expect(preflight.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  it('keeps allowing the apps when an operator lists other origins', async () => {
+    vi.stubEnv('APP_ALLOWED_ORIGINS', PAGES_ORIGIN)
+
+    for (const origin of [PAGES_ORIGIN, 'tauri://localhost', 'https://localhost']) {
+      const res = await createApp().request(PROBE_FREE_ROUTE, { headers: { Origin: origin } })
+      expect(res.headers.get('access-control-allow-origin')).toBe(origin)
+    }
+    const other = await createApp().request(PROBE_FREE_ROUTE, { headers: { Origin: 'https://attacker.example' } })
+    expect(other.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  it('turns the app origins off with APP_ALLOW_NATIVE_APPS=false, back to no CORS at all', async () => {
+    vi.stubEnv('APP_ALLOW_NATIVE_APPS', 'false')
+    expect(resolveConfig().appOrigins).toEqual([])
+
+    for (const origin of APP_ORIGINS) {
+      const res = await createApp().request(PROBE_FREE_ROUTE, { headers: { Origin: origin } })
+      expect(res.headers.get('access-control-allow-origin')).toBeNull()
+      expect(res.headers.get('vary')).toBeNull()
+    }
+  })
+
+  it('reads anything but exactly "false" as on', () => {
+    for (const value of ['', '0', 'no', 'FALSE', 'true']) {
+      expect(resolveConfig({ APP_ALLOW_NATIVE_APPS: value }).appOrigins).toEqual([...APP_ORIGINS])
+    }
+  })
+
+  it('sends a same-origin request (no Origin header) nothing new', async () => {
+    const res = await createApp().request(PROBE_FREE_ROUTE)
+
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+    expect(res.headers.get('vary')).toBeNull()
   })
 })

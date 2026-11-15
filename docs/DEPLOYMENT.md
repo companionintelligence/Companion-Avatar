@@ -26,6 +26,19 @@ different origin than the proxy — the static Cloudflare Pages build at
 `https://avatar.ci.computer` talking to a tunnelled proxy. See the Cloudflare Pages
 section below.
 
+The desktop and Android apps are allowed without it. Their bundled web app runs at
+`tauri://localhost` (desktop on macOS and Linux), `http://tauri.localhost` (desktop on
+Windows; `https://tauri.localhost` if Tauri's `useHttpsScheme` is ever turned on) and
+`https://localhost` (Android), and the proxy answers those four origins, by exact name,
+whatever `APP_ALLOWED_ORIGINS` says. A request from any other origin gets exactly what it got
+before: no CORS headers unless `APP_ALLOWED_ORIGINS` lists it. Set
+`APP_ALLOW_NATIVE_APPS=false` to refuse the apps too. The iOS app's origin,
+`capacitor://localhost`, is not among them; list it in `APP_ALLOWED_ORIGINS` if needed.
+
+CORS decides which web pages may read the proxy's replies; it does not authenticate anyone.
+The proxy has no auth or rate limit (`docs/GAP-ANALYSIS.md`), so do not expose it to the
+internet as it is.
+
 **Container:** two images — the nginx-served SPA
 (`ghcr.io/companionintelligence/ci-spatial-companion-webxr`) and the proxy
 (`ghcr.io/companionintelligence/ci-spatial-companion-proxy`). nginx reverse-proxies `/api/` →
@@ -83,8 +96,8 @@ and the browser has to be told where. Two things make that work:
    so it has to be baked into the build.)
 2. **`APP_ALLOWED_ORIGINS` on the proxy** — the call is now cross-origin, so the proxy
    must return CORS headers for this origin or the browser discards every response. The
-   proxy sends none by default, which is what keeps the same-origin container deployment
-   unchanged.
+   proxy sends none for it by default (only for the desktop and Android apps' own origins),
+   which is what keeps the same-origin container deployment unchanged.
 
 ### Two deploy paths write to this project — set the build env on both
 

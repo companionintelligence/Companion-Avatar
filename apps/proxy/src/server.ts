@@ -22,7 +22,8 @@ import { ttsRoutes } from './routes/tts.js'
 export function createApp(): Hono {
   const app = new Hono()
 
-  // Cross-origin access, off unless APP_ALLOWED_ORIGINS names an origin.
+  // Cross-origin access: for the origins APP_ALLOWED_ORIGINS names, and for the
+  // desktop and Android apps unless APP_ALLOW_NATIVE_APPS=false.
   //
   // The container and dev-server deployments put the SPA and this proxy on one
   // origin, so they send no CORS headers and this middleware never engages. A
@@ -42,12 +43,21 @@ export function createApp(): Hono {
   // and still answers OPTIONS with a 204 instead of letting the router 404 it. Both
   // are harmless, but they would be changes to the same-origin container and
   // dev-server deployments, which have no reason to see any of this.
+  //
+  // The desktop and Android apps' origins (APP_ORIGINS in config.ts) are allowed
+  // on top of the list, by exact name. They engage the middleware only for a
+  // request that carries one of them, so a deployment with no list still answers
+  // every other request exactly as before: no CORS headers, no Vary: Origin, and
+  // the router's own reply to OPTIONS.
   app.use('/api/*', (c, next) => {
-    const { allowedOrigins } = resolveConfig()
-    if (allowedOrigins.length === 0) return next()
+    const { allowedOrigins, appOrigins } = resolveConfig()
+    const origin = c.req.header('Origin')
+    const fromApp = origin !== undefined && resolveAllowedOrigin(origin, appOrigins) !== null
+    if (allowedOrigins.length === 0 && !fromApp) return next()
 
+    const allowed = [...appOrigins, ...allowedOrigins]
     return cors({
-      origin: (origin) => resolveAllowedOrigin(origin, allowedOrigins),
+      origin: (requestOrigin) => resolveAllowedOrigin(requestOrigin, allowed),
       allowMethods: ['GET', 'POST', 'OPTIONS'],
       allowHeaders: ['Content-Type'],
       maxAge: 86400

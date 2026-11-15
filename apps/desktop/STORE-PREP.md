@@ -40,8 +40,9 @@ These are not in the desktop track and were not made here.
    prefixes `VITE_API_BASE` when it is set. The `apps/web/dist` snapshot was built without it, so
    `/api/chat`, `/api/stt`, `/api/tts`, `/api/talk/token` and `/api/config/telemetry` resolve against
    `tauri://localhost`. Build the bundle the shell loads with `VITE_API_BASE` set to the BFF's absolute
-   origin, and add `tauri://localhost` and `http://tauri.localhost` to the BFF's `APP_ALLOWED_ORIGINS`.
-   The first of these was not exercised at runtime.
+   origin. The BFF now allows `tauri://localhost`, `http://tauri.localhost` and
+   `https://tauri.localhost` by default (`APP_ORIGINS` in `apps/proxy/src/config.ts`). The first of
+   these was not exercised at runtime.
 3. No web change is needed for the CSP. The desktop CSP now allows `blob:` in `connect-src`.
 
 ## Distribution routes
