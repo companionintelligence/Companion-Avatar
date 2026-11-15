@@ -57,7 +57,7 @@ Item 11 and the licence question in item 12, plus the size choice in item 13. No
 
 ## Native follow-ups
 
-- `android:allowBackup="true"` lets Android back up app data, including web storage, to Google's backup service. Decide whether conversation data should be backed up. Then set `allowBackup="false"`, or add data-extraction rules.
+- Done in v0.2.0: `android:allowBackup="false"`, so Android no longer backs up the app's data (web storage included) to Google's backup service. The app does not depend on backup: it has no backup agent, and its settings live in the WebView's storage. On Android 12 and later this setting does not stop a device-to-device transfer; add `dataExtractionRules` if that should be blocked too.
 
 ## Not verified
 

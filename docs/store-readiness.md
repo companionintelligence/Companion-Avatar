@@ -106,8 +106,9 @@ although the skeptic refuted it as a defect.
 - **AI disclosures.** iOS guideline 5.1.2(i) needs a data-sharing disclosure. For Play's
   generative-AI reporting, confirm the current policy text, since the page checked did not state an
   in-app flag duty.
-- **Android backup.** `allowBackup` is true, so web storage is backed up. Set it false or add
-  data-extraction rules.
+- **Android backup.** Done: `allowBackup` is false from v0.2.0, so web storage is no longer backed up
+  to Google. Device-to-device transfer on Android 12 and later is unaffected; add data-extraction
+  rules if that matters.
 - **Size.** The iOS app is 257 MiB, of which the VRMs are 141.6 MB. The Play AAB is 181 MB, under the
   200 MB cellular warning.
 - **Usage strings.** iOS needs an `AudioData` declaration if `VITE_STT_REMOTE=true`. It is off in this
