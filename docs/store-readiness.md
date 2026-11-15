@@ -86,7 +86,7 @@ although the skeptic refuted it as a defect.
 
 - **Avatar redistribution.** Decided 2026-11-14. `NOTICE.md` records that the embedded terms restrict
   redistribution for 9 of the 10 VRMs: seven say "Redistribution prohibited" and two say "author
-  only". The owner confirmed that Companion Intelligence has permission to redistribute the bundled
+  only". The owner stated that Companion Intelligence has permission to redistribute the bundled
   avatars, animations and props, so the native builds ship all of `assets/` as it is, with every file
   credited in `NOTICE.md`. No slimmer avatar set is needed.
 - **Licence.** The repo is PolyForm Noncommercial 1.0.0. Whether a free store listing is allowed is a

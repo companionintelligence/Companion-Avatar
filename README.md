@@ -360,6 +360,6 @@ The README documents several client targets. Choose the Vision Pro dev server, v
 
 CI Spatial Companion is free for noncommercial use under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0). The full text is in [`LICENSE`](LICENSE); common questions are answered in the [License FAQ](docs/License-FAQ.md), or email support@companionintelligence.com.
 
-The bundled avatars, animations and props are third-party content with their own terms; [NOTICE.md](NOTICE.md) credits each one. On 2026-11-14 the owner confirmed that Companion Intelligence has permission to redistribute them, and the desktop and Android apps ship them. That permission is Companion Intelligence's; it does not extend to reusing the files elsewhere.
+The bundled avatars, animations and props are third-party content with their own terms; [NOTICE.md](NOTICE.md) credits each one. On 2026-11-14 the owner stated that Companion Intelligence has permission to redistribute them, and the desktop and Android apps ship them. That permission is Companion Intelligence's; it does not extend to reusing the files elsewhere.
 
 > Required Notice: Copyright LifeScope INC, DBA Companion Intelligence (https://ci.computer)

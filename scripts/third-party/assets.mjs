@@ -12,7 +12,7 @@
 
 /** The owner's decision that lets the apps ship these files. */
 export const ASSET_DECISION =
-  'On 2026-11-14 the owner, LifeScope Inc. (DBA Companion Intelligence), confirmed that it has ' +
+  'On 2026-11-14 the owner, LifeScope Inc. (DBA Companion Intelligence), stated that it has ' +
   'permission to redistribute the avatars, animations and props listed below, and decided that ' +
   'the desktop and Android apps ship all of them as they are. The terms each file came with are ' +
   'recorded here as credit; they are not the terms under which you may reuse a file. Do not ' +

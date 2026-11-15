@@ -78,7 +78,7 @@ Measured 2026-11-02 from `apps/web/dist` (read-only):
 Every desktop build copies all of `apps/web/dist` into the binary, so every build carries these
 files.
 
-**Decided 2026-11-14: ship them.** The owner confirmed on 2026-11-14 that Companion Intelligence
+**Decided 2026-11-14: ship them.** The owner stated on 2026-11-14 that Companion Intelligence
 has permission to redistribute the bundled avatars, animations and props, and decided that the
 native builds include all of `assets/` as it is. The earlier rule for this track (no build leaves
 the owner's machine until a slim store build leaves out the restricted models) is withdrawn, and no
@@ -108,7 +108,7 @@ store listing.
 4. **Licence.** The repository licence is PolyForm Noncommercial 1.0.0, which restricts commercial
    use. Decide whether store distribution is allowed under it, paid or free, or whether a separate
    store licence is needed.
-5. **Third-party models.** Decided 2026-11-14. The owner confirmed that Companion Intelligence has
+5. **Third-party models.** Decided 2026-11-14. The owner stated that Companion Intelligence has
    permission to redistribute the bundled avatars, animations and props, so every native build ships
    all of `assets/` as it is. The files' own embedded terms (for the 10 VRMs: no redistribution, or
    no commercial use) are kept in `NOTICE.md` as credit, beside that permission.

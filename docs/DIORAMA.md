@@ -147,7 +147,7 @@ and the failure is the instruction to delete the entry from `PROP_TEXTURES_LOST`
 ## Licensing
 
 The props are Sketchfab-sourced models of real, trademarked hardware; keep the depiction
-nominative and historical. On 2026-11-14 the owner confirmed that Companion Intelligence has
+nominative and historical. On 2026-11-14 the owner stated that Companion Intelligence has
 permission to redistribute them, and the native builds ship all twelve. Matching the source
 names above against Sketchfab the same day found CC BY 4.0 models by museudocomputador and
 maxdragon for eleven of them (the IBM 3178 and CP-500 names also match a second upload, noted in

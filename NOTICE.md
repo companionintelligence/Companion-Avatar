@@ -31,7 +31,7 @@ assets only. The avatars, animation clips and props under `assets/` were made
 with or obtained from third parties and keep the terms they came with.
 
 **Distribution decision, 2026-11-14.** The owner, LifeScope Inc. (DBA Companion
-Intelligence), confirmed on 2026-11-14 that it has permission to redistribute
+Intelligence), stated on 2026-11-14 that it has permission to redistribute
 these files, and decided that the desktop and Android apps ship all of
 `assets/` as it is. That permission is the owner's: it does not let anyone else
 extract or reuse the files outside this repository's own builds. For that, ask
