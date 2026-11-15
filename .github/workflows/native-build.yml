@@ -2,7 +2,7 @@ name: Native Build Artifacts
 
 # Unsigned build artifacts for developer QA only. This workflow does not publish
 # to a GitHub release or app store; native-release.yml does that. The bundled
-# avatars, animations and props may ship: the owner confirmed permission to
+# avatars, animations and props may ship: the owner stated it has permission to
 # redistribute them on 2026-11-14 (NOTICE.md).
 #
 # Third-party actions are pinned to a commit.

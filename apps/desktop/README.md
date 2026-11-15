@@ -30,7 +30,7 @@ app first. It produces, under `src-tauri/target/release/bundle/`:
 
 ## What every build carries
 
-- The web app and all of `assets/`: every avatar, animation and prop. The owner confirmed permission to
+- The web app and all of `assets/`: every avatar, animation and prop. The owner stated it has permission to
   redistribute them on 2026-11-14; `NOTICE.md` credits each one.
 - `THIRD-PARTY-NOTICES.txt` and `LICENSE.txt` as bundle resources: in the install folder on Windows (both
   installers), in the app's resource folder under `/usr/lib/` in the deb and rpm, and in
