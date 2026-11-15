@@ -58,3 +58,15 @@ test('desktop version is the same in tauri.conf.json, Cargo.toml and package.jso
   assert.equal(cargoVersion, config.version);
   assert.equal(pkg.version, config.version);
 });
+
+test('desktop release bundles: NSIS and MSI, deb and rpm without AppImage, ad-hoc signed macOS', async () => {
+  const windows = JSON.parse(await readFile(path.join(here, '../src-tauri/tauri.windows.conf.json'), 'utf8'));
+  const linux = JSON.parse(await readFile(path.join(here, '../src-tauri/tauri.linux.conf.json'), 'utf8'));
+  assert.deepEqual(windows.bundle.targets, ['nsis', 'msi']);
+  // No AppImage: it would bundle the LGPL WebKitGTK and GTK libraries into the download.
+  assert.deepEqual(linux.bundle.targets, ['deb', 'rpm']);
+  // "-" is an ad-hoc signature: Apple silicon needs one to run the app at all. Developer ID
+  // signing (scripts/desktop-notarize.sh, APPLE_SIGNING_IDENTITY) replaces it.
+  assert.equal(config.bundle.macOS.signingIdentity, '-');
+  assert.equal(windows.bundle.windows.certificateThumbprint, null);
+});

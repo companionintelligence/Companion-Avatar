@@ -34,3 +34,12 @@ test('the Android app carries the third-party notices', () => {
   // Written into android/app/src/main/assets/licenses, which Gradle packs into the APK's assets.
   assert.match(pkg.scripts.notices, /third-party-notices\.mjs --parts web,assets,android --gradle android --out android\/app\/src\/main\/assets\/licenses$/);
 });
+
+test('Android release signing comes from the environment and applies only when complete', () => {
+  for (const name of ['KEYSTORE_PATH', 'KEYSTORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']) {
+    assert.ok(gradle.includes(`, '${name}')`), `build.gradle does not read ${name}`);
+  }
+  assert.match(gradle, /def releaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword/);
+  assert.match(gradle, /if \(releaseSigning\) \{\s*signingConfig signingConfigs\.release/);
+  assert.doesNotMatch(gradle, /debuggable\s+true/);
+});
