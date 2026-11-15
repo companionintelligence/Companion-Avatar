@@ -23,8 +23,10 @@ name: Native release
 #   Always   LICENSE, THIRD-PARTY-NOTICES.txt (generated from the lockfiles) and SHA256SUMS.txt.
 #   iOS is not built here; it stays with the owner.
 #
-# The tag must not exist yet: the release creates it on the commit that was built. Its X.Y.Z must
-# equal the desktop version (apps/desktop/src-tauri/tauri.conf.json) and the Android versionName
+# The tag must not exist yet, and no release, published or draft, may use it: the release creates
+# the tag on the commit that was built. prepare checks this before the builds, and the publish job
+# checks again just before it publishes. The tag's X.Y.Z must equal the desktop version
+# (apps/desktop/src-tauri/tauri.conf.json) and the Android versionName
 # (apps/mobile/android/app/build.gradle).
 #
 # Secrets, only for android_signing keystore (or auto):
@@ -112,13 +114,26 @@ jobs:
             echo "::error::$TAG does not match the Android versionName $android (apps/mobile/android/app/build.gradle)."
             exit 1
           fi
-          # The release creates the tag on the commit built here; an existing tag could point anywhere.
-          if [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
-            echo "::error::The tag $TAG already exists. Pick a new tag."
+          # The release creates the tag on the commit built here, and gh release create ignores
+          # --target for a tag that exists, so an existing tag could point anywhere. With
+          # --exit-code, git ls-remote exits 0 when the tag exists and 2 when it does not; any other
+          # status is a failed lookup, which must not pass for "no such tag". The publish job checks
+          # again just before it publishes.
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || status=$?
+          case "$status" in
+            0) echo "::error::The tag $TAG already exists. Pick a new tag."; exit 1 ;;
+            2) ;;
+            *) echo "::error::git ls-remote exited with $status, so it is not known whether the tag $TAG exists."; exit 1 ;;
+          esac
+          # A failed listing stops here rather than reading as "no release". GitHub lists drafts only
+          # to a token that can push, which this job's cannot; the publish job's can.
+          if ! releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')"; then
+            echo "::error::Could not list the releases, so it is not known whether one for $TAG exists."
             exit 1
           fi
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::A release named $TAG already exists."
+          if grep -Fxq -- "$TAG" <<< "$releases"; then
+            echo "::error::A release for $TAG already exists."
             exit 1
           fi
           echo "version=$core" >> "$GITHUB_OUTPUT"
@@ -662,6 +677,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # prepare's checks again, right before publishing. The builds take a while, and "Re-run
+          # failed jobs" keeps prepare's earlier result; a tag made meanwhile would make
+          # gh release create ignore --target and publish these files under that tag's commit.
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null || status=$?
+          case "$status" in
+            0) echo "::error::The tag $TAG exists now and may point at another commit than $GITHUB_SHA. Nothing was published."; exit 1 ;;
+            2) ;;
+            *) echo "::error::git ls-remote exited with $status, so it is not known whether the tag $TAG exists. Nothing was published."; exit 1 ;;
+          esac
+          # This job's token can push, so drafts are listed too, such as one left by a failed attempt.
+          if ! releases="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName')"; then
+            echo "::error::Could not list the releases, so it is not known whether one for $TAG exists. Nothing was published."
+            exit 1
+          fi
+          if grep -Fxq -- "$TAG" <<< "$releases"; then
+            echo "::error::A release for $TAG exists now, perhaps a draft left by an earlier attempt. Delete it or pick a new tag. Nothing was published."
+            exit 1
+          fi
           gh release create "$TAG" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
