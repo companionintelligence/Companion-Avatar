@@ -2,7 +2,7 @@
 
 Checked 2026-11-02 on branch `feat/native-shells-face-to-voice` in the native-shells worktree. Nothing was uploaded or submitted. No Play Console account, upload key or certificate was created. Signing was tested with a throwaway keystore in the scratchpad, which was deleted afterwards.
 
-Identifiers and levels: applicationId and namespace `com.companionintelligence.avatar` (same as iOS, see below), app name "Avatar Companion", versionCode 1, versionName 1.0, minSdk 24, compileSdk 36, targetSdk 36.
+Identifiers and levels: applicationId and namespace `com.companionintelligence.avatar` (same as iOS, see below), app name "Avatar Companion", versionCode 1, versionName 1.0 (versionCode 2, versionName 0.2.0 from release v0.2.0), minSdk 24, compileSdk 36, targetSdk 36.
 
 ## Ready
 

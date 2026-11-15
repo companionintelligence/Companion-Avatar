@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(await readFile(path.join(here, '../src-tauri/tauri.conf.json'), 'utf8'));
 const pkg = JSON.parse(await readFile(path.join(here, '../package.json'), 'utf8'));
+const cargoToml = await readFile(path.join(here, '../src-tauri/Cargo.toml'), 'utf8');
 
 test('Avatar desktop loads its bundled web app and not the hosted website', () => {
   assert.equal(config.productName, 'Avatar Companion');
@@ -27,4 +28,13 @@ test('desktop build generates all required platform icons', () => {
   assert.deepEqual(config.bundle.icon, ['icons/32x32.png', 'icons/128x128.png', 'icons/128x128@2x.png', 'icons/icon.icns', 'icons/icon.ico']);
   assert.match(pkg.scripts.icons, /^tauri icon /);
   assert.match(pkg.scripts.build, /npm run icons && tauri build/);
+});
+
+test('desktop version is the same in tauri.conf.json, Cargo.toml and package.json', () => {
+  // The release workflow names the installers after tauri.conf.json's version and checks the tag
+  // against it; Cargo.toml and package.json must not drift from it.
+  const cargoVersion = cargoToml.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m)?.[1];
+  assert.match(config.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(cargoVersion, config.version);
+  assert.equal(pkg.version, config.version);
 });
