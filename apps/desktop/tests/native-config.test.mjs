@@ -24,6 +24,16 @@ test('Avatar desktop CSP allows the WebAssembly and media required by the scene'
   assert.match(csp, /connect-src[^;]*https:/);
 });
 
+test('Avatar desktop CSP lets the user pick a server on this computer or over HTTPS', () => {
+  // Settings takes a Proxy (BFF) or Ollama URL at run time. A server on the same computer is
+  // typed as localhost or 127.0.0.1; anything further away needs HTTPS, as on the web.
+  const connect = config.app.security.csp.match(/connect-src([^;]*)/)[1].trim().split(/\s+/);
+  for (const source of ['https:', 'wss:', 'http://localhost:*', 'ws://localhost:*', 'http://127.0.0.1:*', 'ws://127.0.0.1:*']) {
+    assert.ok(connect.includes(source), `connect-src lacks ${source}`);
+  }
+  assert.ok(!connect.includes('http:') && !connect.includes('*'), 'connect-src must not allow every plain-http host');
+});
+
 test('desktop build generates all required platform icons', () => {
   assert.deepEqual(config.bundle.icon, ['icons/32x32.png', 'icons/128x128.png', 'icons/128x128@2x.png', 'icons/icon.icns', 'icons/icon.ico']);
   assert.match(pkg.scripts.icons, /^tauri icon /);

@@ -146,7 +146,11 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
   const [provider, setProvider] = useState<LLMProvider>(settings.llm_provider ?? 'proxy')
   const [url, setUrl] = useState('')
   const [model, setModel] = useState('')
-  const { healthState, health, healthError, checkConnection } = useConnectionCheck(provider, onActivationStateChange)
+  // Check what the form shows, saved or not, so a server can be tried before it is saved.
+  const { healthState, health, healthError, checkConnection } = useConnectionCheck(provider, onActivationStateChange, {
+    url,
+    model
+  })
 
   const fields = FIELD_MAP[provider]
 

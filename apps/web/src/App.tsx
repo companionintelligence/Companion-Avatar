@@ -12,6 +12,7 @@ import {
   LogoOverlay,
   ControlOverlay,
   OnboardingOverlay,
+  connectionTargetFor,
   useAgent,
   useResponsiveLayout,
   AppConfigState,
@@ -257,6 +258,7 @@ export const App = () => {
           onSkip={handleSkipOnboarding}
           activationState={activationState}
           llmProvider={llmSettings.llm_provider}
+          llmTarget={connectionTargetFor(llmSettings)}
           onActivationStateChange={setActivationState}
         />
       </div>
