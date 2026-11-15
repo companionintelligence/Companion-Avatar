@@ -19,7 +19,7 @@ made on 2026-11-14: all of them (see Payload).
 | `src-tauri/Entitlements.plist` wired as `bundle.macOS.entitlements` | Wired. Debug build passes. Unsigned debug builds do not carry it |
 | `scripts/desktop-notarize.sh` | Written. Missing-config and identity checks tested. Nothing signed, nothing sent to Apple |
 | Windows NSIS target and thumbprint from the environment | Written. `scripts/desktop-build-windows.mjs` env checks tested on macOS. No Windows build |
-| Linux `deb` and `AppImage` targets | Written in `src-tauri/tauri.linux.conf.json`. Not built, no Linux host |
+| Linux `deb` and `rpm` targets (AppImage dropped in v0.2.0) | Written in `src-tauri/tauri.linux.conf.json`. Built by `native-release.yml` on ubuntu-22.04, not on a local host |
 | Icons | Validated: PNG sizes, ICNS and ICO structure, `iconutil` parses the ICNS |
 
 ## Web-side changes the lead needs
@@ -49,7 +49,7 @@ These are not in the desktop track and were not made here.
 
 | | Direct (macOS Developer ID, Windows NSIS, Linux packages) | Mac App Store | Microsoft Store |
 | --- | --- | --- | --- |
-| Package | `.app` (in a DMG if wanted), NSIS `.exe`, `.deb`, `.AppImage` | `.pkg` from `productbuild`, sandboxed | MSIX (not verified here) |
+| Package | `.app` (in a DMG if wanted), NSIS `.exe` and `.msi`, `.deb`, `.rpm` | `.pkg` from `productbuild`, sandboxed | MSIX (not verified here) |
 | Signing | Developer ID Application, hardened runtime, notarized and stapled by `scripts/desktop-notarize.sh`. Authenticode for Windows via `WINDOWS_CERTIFICATE_THUMBPRINT` | Apple Distribution for the app and Mac Installer Distribution for the `.pkg`. The older "3rd Party Mac Developer" names also work. App Sandbox required | Partner Center signs MSIX for the store (not verified here) |
 | Review | None by Apple or Microsoft. Gatekeeper and SmartScreen warn on unsigned or unnotarized builds | Apple App Review. Guideline 4.2 (Minimum Functionality) is a rejection risk for a plain web wrapper | Microsoft Store certification |
 | Updates | Needs an updater and its own signing key (owner decision) | Store updates | Store updates |
@@ -57,6 +57,10 @@ These are not in the desktop track and were not made here.
 
 Current store rules and fees were not checked from this environment. Recheck the developer
 agreements before any submission.
+
+The GitHub pre-releases from `.github/workflows/native-release.yml` (v0.2.0 on) are the direct route
+without signing: Windows NSIS and MSI not code-signed, macOS ad-hoc signed and not notarized, Linux
+deb and rpm. Their release notes explain SmartScreen and Gatekeeper.
 
 ## Payload: third-party avatar models
 
@@ -127,8 +131,8 @@ From `apps/desktop`:
 pnpm exec tauri build --debug --bundles app --config '{"build":{"beforeBuildCommand":""}}'   # debug .app, web bundle not rebuilt
 scripts/desktop-notarize.sh --check                                                         # environment check only, nothing signed
 scripts/desktop-notarize.sh "src-tauri/target/release/bundle/macos/Avatar Companion.app"    # sign, notarize, staple (needs owner credentials)
-node scripts/desktop-build-windows.mjs                                                      # Windows NSIS, on Windows, needs WINDOWS_CERTIFICATE_THUMBPRINT
-pnpm exec tauri build --bundles deb,appimage                                                # Linux, on Linux (not run here)
+node scripts/desktop-build-windows.mjs                                                      # Windows NSIS and MSI, on Windows, needs WINDOWS_CERTIFICATE_THUMBPRINT
+pnpm exec tauri build --bundles deb,rpm                                                     # Linux, on Linux (not run here)
 ```
 
 `scripts/desktop-notarize.sh` exits 2 and names the missing variables when they are not set, and it

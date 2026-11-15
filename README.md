@@ -7,7 +7,7 @@
 <p align="center"><strong>WebXR and WebSpatial</strong></p>
 
 [![release](https://img.shields.io/github/v/release/companionintelligence/Companion-Avatar?include_prereleases&style=flat-square&label=release)](https://github.com/companionintelligence/Companion-Avatar/releases)
-[![platform](https://img.shields.io/badge/platform-WebXR%20%C2%B7%20visionOS%20%C2%B7%20Web-0a6358?style=flat-square)](https://github.com/companionintelligence/Companion-Avatar)
+[![platform](https://img.shields.io/badge/platform-Web%20%C2%B7%20WebXR%20%C2%B7%20visionOS%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-0a6358?style=flat-square)](https://github.com/companionintelligence/Companion-Avatar)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0a6358?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/badge/chat-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/invite/yQp9hwpzAa)
 
@@ -110,6 +110,9 @@ input — the minimal text-only interaction surface.
 │   └── core/           # Shared services, components, and utilities
 ├── apps/
 │   ├── web/            # React/R3F standard web application
+│   ├── desktop/        # Tauri 2 desktop app (Windows, macOS, Linux) around the web app
+│   ├── mobile/         # Capacitor 8 Android and iOS apps around the web app
+│   ├── proxy/          # Hono BFF: chat, voice and health under /api
 │   ├── vision-pro/     # Apple Vision Pro (WebSpatial) application
 │   └── vanilla-client/ # Vanilla Three.js/WebGPU/WebXR client from Web-2
 ```
@@ -132,6 +135,83 @@ pnpm dev:vanilla
 # Build only the vanilla client
 pnpm build:vanilla
 ```
+
+## Desktop and Android apps
+
+The web app also ships as a desktop app for Windows, macOS and Linux ([`apps/desktop`](apps/desktop/README.md), Tauri 2)
+and an Android app ([`apps/mobile`](apps/mobile/README.md), Capacitor 8). Each carries its own copy of the web build,
+every avatar, animation and prop in `assets/`, `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt`. Neither loads the website.
+
+**Download** a pre-release from [Releases](https://github.com/companionintelligence/Companion-Avatar/releases),
+starting with v0.2.0:
+
+| Platform | File |
+| --- | --- |
+| Windows 10 and 11 (x64) | `avatar-companion-<tag>-windows-x64-setup.exe` (per user) or `…-windows-x64.msi` |
+| macOS 12 or later, Apple silicon and Intel | `avatar-companion-<tag>-macos-universal.dmg` |
+| Debian, Ubuntu 22.04 or later | `avatar-companion-<tag>-linux-amd64.deb` |
+| Fedora, RHEL, openSUSE | `avatar-companion-<tag>-linux-x86_64.rpm` |
+| Android 7.0 or later | `avatar-companion-<tag>-android-keystore-signed.apk` or `…-throwaway-signed.apk` |
+
+These are pre-releases, not store builds. The desktop installers are not code-signed (Windows) or notarized (macOS,
+which gets an ad-hoc signature), and the APK is sideloaded. Each release's notes explain how to get past SmartScreen
+and Gatekeeper, how to sideload the APK, and that an APK signed with a different key needs the old one uninstalled
+first. `SHA256SUMS.txt` comes with every release.
+
+**Without a server** the apps run in demo mode, with no account:
+
+- the 3D avatar, every bundled avatar to pick from in Settings, its body animations, expressions and lip-sync;
+- text chat with the built-in demo responder: scripted answers, not a language model (the session says Demo-only);
+- spoken replies with the system voice, where the app's WebView offers speech synthesis.
+
+They do need an internet connection when they start: the scene loads its studio lighting from a public CDN
+(raw.githack.com). No API key, server address or analytics ID is built into them.
+
+**With a server**: open Settings, pick **Proxy** and enter your BFF's chat URL (`https://<host>/api/chat`), or
+**Ollama** and your Ollama server's address, then press **Check connection**. The check goes to the server you
+picked, and chat goes only there.
+
+- The BFF (`apps/proxy`) accepts the apps' origins without configuration: `tauri://localhost` (desktop on macOS
+  and Linux), `http://tauri.localhost` and `https://tauri.localhost` (desktop on Windows) and `https://localhost`
+  (Android). `APP_ALLOW_NATIVE_APPS=false` turns that off. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- The desktop app reaches servers over HTTPS, or over plain HTTP on the same computer (`localhost`, `127.0.0.1`).
+  The Android app reaches HTTPS servers only.
+- Ollama must allow the app's origin. Its defaults already cover `tauri://localhost` and `https://localhost`; for
+  the Windows app set `OLLAMA_ORIGINS=http://tauri.localhost`.
+- Companion memory works when the BFF you pick runs with `APP_UPSTREAM=ci-server`.
+
+**Not in the apps yet:** WebXR and immersive mode (the system WebViews do not offer it); server-side voices, speech
+recognition and live talk (they need a server address built into the app, and the release builds have none);
+On-device models in the desktop app (the WebLLM engine loads from a CDN that the app's content security policy
+blocks); and a switch to the 1970s datacenter diorama, whose props are bundled but which only the website's
+`?env=datacenter-1970s` opens.
+
+**Build them yourself:**
+
+```bash
+pnpm install
+pnpm --filter @ci-avatar/desktop build             # this OS's installers, after the web build and the notices
+pnpm --filter @ci-avatar/web build                 # the Android app bundles this build
+pnpm --filter @ci-avatar/mobile exec cap sync android
+pnpm --filter @ci-avatar/mobile run notices        # THIRD-PARTY-NOTICES.txt into the APK's assets
+cd apps/mobile/android && ./gradlew assembleRelease
+```
+
+The release APK is signed only when `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` are all
+set (or `android/keystore.properties` exists); otherwise it is unsigned.
+
+**Publish a pre-release** with the manual [`native-release.yml`](.github/workflows/native-release.yml) workflow:
+
+```bash
+gh workflow run native-release.yml --repo companionintelligence/Companion-Avatar --ref main \
+  -f tag=v0.2.0 -f android_signing=auto
+```
+
+`android_signing` is `auto` (the release keystore when its secrets are set, else a throwaway key), `keystore`,
+`throwaway` or `skip`. The keystore secrets are `AVATAR_KEYSTORE_BASE64`, `AVATAR_KEYSTORE_PASSWORD`,
+`AVATAR_KEY_ALIAS` and `AVATAR_KEY_PASSWORD`. The tag must be new and match the apps' version (0.2.0 in
+`tauri.conf.json`, `Cargo.toml`, the `package.json` files and the Android `versionName`). iOS builds stay with the
+owner ([apps/mobile/STORE-PREP-IOS.md](apps/mobile/STORE-PREP-IOS.md)).
 
 ## Docker / CI Hub
 

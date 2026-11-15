@@ -1,23 +1,75 @@
-# Avatar Companion desktop shell
+# Avatar Companion desktop app
 
-A Tauri 2 window around the same web app that `apps/web` builds. It adds no native
-features yet. Its job is to prove the wrap builds on macOS, Windows and Linux.
+A Tauri 2 window around the web app that `apps/web` builds, for Windows, macOS and Linux. The web
+build is compiled into the binary (`frontendDist`), so the app loads no remote URL; the shell adds no
+native features. The window is the system WebView: WebView2 on Windows, WKWebView on macOS and
+WebKitGTK 4.1 on Linux.
 
-## Run
+Version, identifier and bundles are in `src-tauri/tauri.conf.json`, with per-OS additions in
+`tauri.windows.conf.json` and `tauri.linux.conf.json`. `tests/native-config.test.mjs` pins them.
+
+## Run and build
 
 ```bash
 pnpm install                                   # from the repo root
 pnpm --filter @ci-avatar/desktop dev           # starts the web dev server on :5173 too
-pnpm --filter @ci-avatar/desktop build:debug   # debug .app, no installer
+pnpm --filter @ci-avatar/desktop build         # installers for this OS
+pnpm --filter @ci-avatar/desktop build:debug   # debug build, quicker
+pnpm --filter @ci-avatar/desktop test:native   # config tests
 ```
 
-Chat and voice call the BFF proxy, so start `pnpm dev:proxy` alongside the dev shell.
+`build` regenerates the icons from `apps/web/public/icons/icon-512.png`, writes the third-party
+notices (`npm run notices`, below) and runs `tauri build`, whose `beforeBuildCommand` builds the web
+app first. It produces, under `src-tauri/target/release/bundle/`:
+
+| OS | Bundles | Notes |
+| --- | --- | --- |
+| Windows | `nsis/*-setup.exe`, `msi/*.msi` | Not code-signed. NSIS installs for the current user; the MSI for all users. Both fetch WebView2 if it is missing. |
+| macOS | `dmg/*.dmg`, `macos/Avatar Companion.app` | Ad-hoc signed (`signingIdentity: "-"`), not notarized. Pass `--target universal-apple-darwin` for one app for Apple silicon and Intel. |
+| Linux | `deb/*.deb`, `rpm/*.rpm` | Build on Ubuntu 22.04 with `libwebkit2gtk-4.1-dev`. No AppImage: it would bundle the LGPL WebKitGTK and GTK libraries. |
+
+## What every build carries
+
+- The web app and all of `assets/`: every avatar, animation and prop. The owner confirmed permission to
+  redistribute them on 2026-11-14; `NOTICE.md` credits each one.
+- `THIRD-PARTY-NOTICES.txt` and `LICENSE.txt` as bundle resources: in the install folder on Windows (both
+  installers), in the app's resource folder under `/usr/lib/` in the deb and rpm, and in
+  `Contents/Resources` on macOS.
+  `scripts/third-party-notices.mjs` writes them into `src-tauri/notices/` (ignored by git) from
+  `pnpm-lock.yaml`, `src-tauri/Cargo.lock` and the asset catalogue in `scripts/third-party/assets.mjs`.
+- No API key, server address or analytics ID. Build without any `VITE_*` or `APP_*` variable set, as the
+  release workflow insists, or Vite will bake it in.
+
+## Servers
+
+The app starts in demo mode: the avatar, its animations and text chat with the scripted demo responder.
+For a language model, open Settings, pick **Proxy** (your BFF's `https://<host>/api/chat`) or **Ollama**
+(the server's address), and press **Check connection**.
+
+- The page's origin is `tauri://localhost` on macOS and Linux and `http://tauri.localhost` on Windows. The
+  BFF in `apps/proxy` allows both (and `https://tauri.localhost`) by default.
+- The content security policy lets the app reach servers over HTTPS and over plain HTTP on the same
+  computer (`localhost`, `127.0.0.1`); `tests/native-config.test.mjs` pins that.
+- Ollama allows `tauri://localhost` by default. For the Windows app, set `OLLAMA_ORIGINS=http://tauri.localhost`.
 
 ## Limits
 
-- The window is the system WebView (WKWebView on macOS, WebView2 on Windows, WebKitGTK on
-  Linux). WebXR is not available in any of them, so immersive mode stays on the web.
-- `identifier` (`computer.ci.avatar`) and the CSP in `tauri.conf.json` are provisional. The
-  owner picks the real bundle identifier before any signed release.
-- The window loads the bundled `apps/web/dist`, which contains every avatar, animation and prop
-  in `assets/`. The owner confirmed permission to redistribute them on 2026-11-14 (`NOTICE.md`).
+- WebXR is not available in any of the system WebViews, so immersive mode stays on the web.
+- On-device models (WebLLM) do not run here: a worker imports the engine from a CDN (esm.run), and the
+  app's content security policy blocks that import (checked in Chromium with the same policy). Bundling
+  the engine with the app would fix it without loosening the policy.
+- The scene loads its studio lighting from a public CDN (raw.githack.com) when it starts, so the app needs
+  an internet connection.
+- There is no updater: install a new release over the old one.
+- `identifier` is `computer.ci.avatar`, which v0.2.0 ships with. Changing it later moves the app's data
+  folder, so users would lose their settings; the owner decides before any store or signed release
+  (`STORE-PREP.md`).
+
+## Releases
+
+`.github/workflows/native-release.yml` builds all three systems on GitHub's runners (Windows NSIS and MSI,
+a universal ad-hoc signed macOS dmg, Linux deb and rpm) with the Android APK and publishes a GitHub
+pre-release. It starts each app for 15 seconds as a smoke test. See the root `README.md`.
+
+Store and signed distribution (Developer ID and notarization with `scripts/desktop-notarize.sh`,
+Authenticode with `scripts/desktop-build-windows.mjs`, the Mac App Store) are in `STORE-PREP.md`.
