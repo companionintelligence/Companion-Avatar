@@ -7,8 +7,22 @@ for acknowledgements.
 
 ## Copyleft and reciprocal-licence dependencies
 
-None. Every third-party dependency in this repository is under a permissive
-licence (MIT, Apache-2.0, ISC, BSD or similar).
+The desktop app links a few Rust crates under the Mozilla Public License 2.0
+(at the time of writing `cssparser`, `dtoa-short`, `option-ext` and
+`selectors`, which Tauri uses), unmodified. Everything else the apps carry is
+under a permissive licence (MIT, Apache-2.0, ISC, BSD, Zlib, OFL-1.1 or
+similar).
+
+## Notices inside the apps
+
+The desktop and Android apps each carry `THIRD-PARTY-NOTICES.txt` and
+`LICENSE.txt`, and every native release attaches a `THIRD-PARTY-NOTICES.txt` that
+covers both.
+`scripts/third-party-notices.mjs` writes them from `pnpm-lock.yaml`,
+`apps/desktop/src-tauri/Cargo.lock` and the Android build's resolved
+libraries, with each licence text and, for the MPL-2.0 crates, where their
+source is. The asset credits below come from `scripts/third-party/assets.mjs`,
+whose test fails when a file is added under `assets/` without one.
 
 ## Bundled avatars, animations and props
 

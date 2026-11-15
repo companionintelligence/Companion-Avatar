@@ -37,7 +37,17 @@ test('Avatar desktop CSP lets the user pick a server on this computer or over HT
 test('desktop build generates all required platform icons', () => {
   assert.deepEqual(config.bundle.icon, ['icons/32x32.png', 'icons/128x128.png', 'icons/128x128@2x.png', 'icons/icon.icns', 'icons/icon.ico']);
   assert.match(pkg.scripts.icons, /^tauri icon /);
-  assert.match(pkg.scripts.build, /npm run icons && tauri build/);
+  assert.match(pkg.scripts.build, /^npm run icons && npm run notices && tauri build$/);
+});
+
+test('desktop bundles carry the third-party notices and the licence', () => {
+  // scripts/third-party-notices.mjs writes both files into src-tauri/notices before every build.
+  assert.deepEqual(config.bundle.resources, {
+    'notices/THIRD-PARTY-NOTICES.txt': 'THIRD-PARTY-NOTICES.txt',
+    'notices/LICENSE.txt': 'LICENSE.txt'
+  });
+  assert.match(pkg.scripts.notices, /third-party-notices\.mjs --parts web,assets,desktop --out src-tauri\/notices$/);
+  for (const script of ['dev', 'build', 'build:debug']) assert.match(pkg.scripts[script], /npm run notices && tauri /);
 });
 
 test('desktop version is the same in tauri.conf.json, Cargo.toml and package.json', () => {

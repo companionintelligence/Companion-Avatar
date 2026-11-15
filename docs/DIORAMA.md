@@ -152,5 +152,6 @@ permission to redistribute them, and the native builds ship all twelve. Matching
 names above against Sketchfab the same day found CC BY 4.0 models by museudocomputador and
 maxdragon for eleven of them (the IBM 3178 and CP-500 names also match a second upload, noted in
 `NOTICE.md`); the Commodore PET's author is unknown, because several models share its name. CC BY
-needs visible attribution, which `NOTICE.md` gives. Record the author and licence here when a prop
-is added or replaced.
+needs visible attribution, which `NOTICE.md` and the apps' `THIRD-PARTY-NOTICES.txt` give. Record
+the author and licence here, and in `scripts/third-party/assets.mjs`, when a prop is added or
+replaced.

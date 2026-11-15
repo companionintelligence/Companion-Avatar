@@ -33,6 +33,10 @@
     "active": true,
     "targets": "all",
     "category": "Productivity",
+    "resources": {
+      "notices/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt",
+      "notices/LICENSE.txt": "LICENSE.txt"
+    },
     "shortDescription": "Avatar Companion desktop shell",
     "macOS": {
       "infoPlist": "Info.plist",

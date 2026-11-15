@@ -29,3 +29,8 @@ test('Android does not back up the app data to Google', () => {
   const application = manifest.match(/<application\b[^>]*>/s)?.[0] ?? '';
   assert.match(application, /android:allowBackup="false"/);
 });
+
+test('the Android app carries the third-party notices', () => {
+  // Written into android/app/src/main/assets/licenses, which Gradle packs into the APK's assets.
+  assert.match(pkg.scripts.notices, /third-party-notices\.mjs --parts web,assets,android --gradle android --out android\/app\/src\/main\/assets\/licenses$/);
+});
