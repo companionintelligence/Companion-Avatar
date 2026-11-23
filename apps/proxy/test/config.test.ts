@@ -49,4 +49,17 @@ describe('resolveConfig', () => {
   it('rejects an unknown TTS upstream', () => {
     expect(() => resolveConfig({ APP_TTS_UPSTREAM: 'bogus' })).toThrow(/Invalid APP_TTS_UPSTREAM/)
   })
+
+  it('selects the aiavatarkit upstream and requires its identifier', () => {
+    expect(() => resolveConfig({ APP_UPSTREAM: 'aiavatarkit' })).toThrow(/APP_AIAVATARKIT_TOKEN/)
+    const cfg = resolveConfig({ APP_UPSTREAM: 'aiavatarkit', APP_AIAVATARKIT_TOKEN: 'visitor-1' })
+    expect(cfg.upstream).toBe('aiavatarkit')
+    expect(cfg.aiavatarkitUrl).toBe('http://host.docker.internal:8000/v1')
+    expect(cfg.aiavatarkitToken).toBe('visitor-1')
+  })
+
+  it('strips the trailing slash from the aiavatarkit URL', () => {
+    const cfg = resolveConfig({ APP_AIAVATARKIT_URL: 'http://avatar:8000/v1/' })
+    expect(cfg.aiavatarkitUrl).toBe('http://avatar:8000/v1')
+  })
 })

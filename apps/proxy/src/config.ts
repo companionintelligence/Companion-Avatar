@@ -2,7 +2,7 @@
  * Runtime configuration for the BFF, read from process.env on each resolve so a
  * marketplace container can be pointed at any upstream without a rebuild.
  */
-export type UpstreamKind = 'ollama' | 'openai' | 'ci-server'
+export type UpstreamKind = 'ollama' | 'openai' | 'ci-server' | 'aiavatarkit'
 
 /**
  * TTS upstream kind. `cosyvoice` speaks to a CosyVoice2 OpenAI-compatible server
@@ -18,6 +18,13 @@ export interface ResolvedConfig {
   openaiUrl: string
   openaiApiKey: string
   openaiModel: string
+  /** AIAvatarKit's Chat Completions base URL, including `/v1` (APP_AIAVATARKIT_URL). */
+  aiavatarkitUrl: string
+  /**
+   * The identifier AIAvatarKit keys a conversation by (APP_AIAVATARKIT_TOKEN). It is not a secret, and it has to be stable
+   * for one conversation. The proxy sends one value for every visitor, so every visitor shares one conversation there.
+   */
+  aiavatarkitToken: string
   ciServerUrl: string
   /** Selected TTS upstream (env APP_TTS_UPSTREAM). */
   ttsUpstream: TtsUpstreamKind
@@ -115,7 +122,7 @@ export function resolveAllowedOrigin(origin: string, allowed: string[]): string 
   return allowed.includes(normalizeOrigin(origin)) ? origin : null
 }
 
-const VALID_UPSTREAMS: UpstreamKind[] = ['ollama', 'openai', 'ci-server']
+const VALID_UPSTREAMS: UpstreamKind[] = ['ollama', 'openai', 'ci-server', 'aiavatarkit']
 const VALID_TTS_UPSTREAMS: TtsUpstreamKind[] = ['cosyvoice', 'headtts']
 
 function stripTrailingSlash(url: string): string {
@@ -133,6 +140,11 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     throw new Error('APP_OPENAI_API_KEY is required when APP_UPSTREAM=openai')
   }
 
+  const aiavatarkitToken = env.APP_AIAVATARKIT_TOKEN ?? ''
+  if (upstream === 'aiavatarkit' && !aiavatarkitToken) {
+    throw new Error('APP_AIAVATARKIT_TOKEN is required when APP_UPSTREAM=aiavatarkit')
+  }
+
   const ttsUpstream = (env.APP_TTS_UPSTREAM ?? 'cosyvoice') as TtsUpstreamKind
   if (!VALID_TTS_UPSTREAMS.includes(ttsUpstream)) {
     throw new Error(
@@ -147,6 +159,8 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     openaiUrl: stripTrailingSlash(env.APP_OPENAI_URL ?? 'https://api.openai.com/v1'),
     openaiApiKey,
     openaiModel: env.APP_OPENAI_MODEL ?? 'gpt-4o-mini',
+    aiavatarkitUrl: stripTrailingSlash(env.APP_AIAVATARKIT_URL ?? 'http://host.docker.internal:8000/v1'),
+    aiavatarkitToken,
     ciServerUrl: stripTrailingSlash(env.APP_CISERVER_URL ?? 'http://host.docker.internal:3000'),
     ttsUpstream,
     // Default targets a CosyVoice2 OpenAI-compatible server on the host. 8880 is

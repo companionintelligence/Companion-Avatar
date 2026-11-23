@@ -118,6 +118,7 @@ The full MIT notice is in the upstream `LICENSE` file at the pinned commit.
 - Browser audio routing is tested with fakes for `livekit-client` and the audio graph. It has not been heard in a real
   browser.
 - Lip-sync is not wired (see above).
-- If the agent never joins, the visitor stays in the live state until they press "End talk". There is no join timeout yet.
+- A visitor is not live until the agent is in the room. If the agent has not joined within 20 seconds, the conversation ends
+  with the `agent_absent` reason and the room is released. That timeout has only been checked against a fake room.
 - The "Talk live" control has not been checked visually. It is hidden unless `VITE_TALK_ENABLED=true`.
 - The concurrency limit is approximate, by design.

@@ -2,7 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { apiUrl } from '../../config/apiBase'
 
-import { __resetTalkForTests, startTalk, stopTalk, talkAnalyser, TalkError, TalkStore } from './talkService'
+import {
+  __resetTalkForTests,
+  AGENT_JOIN_POLL_MS,
+  AGENT_JOIN_TIMEOUT_MS,
+  startTalk,
+  stopTalk,
+  talkAnalyser,
+  TalkError,
+  TalkStore
+} from './talkService'
 
 // The LiveKit room is replaced by a fake that records what the service does to it. Nothing here opens a socket.
 const lk = vi.hoisted(() => {
@@ -17,6 +26,8 @@ const lk = vi.hoisted(() => {
     micGate: null as Promise<void> | null,
     /** When set, the room reports a disconnect and then fails to connect, as a real room can. */
     connectFailure: false,
+    /** When set, the agent does not join the room on connect, so a visitor waits for it. */
+    agentAbsent: false,
     rooms: [] as FakeRoom[]
   }
 
@@ -30,8 +41,8 @@ const lk = vi.hoisted(() => {
         this.emit('disconnected')
         throw new Error('no route to host')
       }
-      // What the agent may already have set on itself when the visitor joins.
-      if (state.joinAttributes) this.remoteParticipants.set('agent', { attributes: state.joinAttributes })
+      // The agent is in the room from the start, unless a test says otherwise. Its attributes are what it set on itself.
+      if (!state.agentAbsent) this.remoteParticipants.set('agent', { attributes: state.joinAttributes ?? {} })
     })
     readonly disconnect = vi.fn(async () => undefined)
     readonly localParticipant = {
@@ -147,6 +158,7 @@ beforeEach(() => {
   lk.state.connectGate = null
   lk.state.micGate = null
   lk.state.connectFailure = false
+  lk.state.agentAbsent = false
   audio.sources.length = 0
   audio.context.createMediaStreamSource.mockClear()
   audio.resumeAudioGraph.mockClear()
@@ -379,5 +391,49 @@ describe('ending a conversation', () => {
     lk.state.rooms[0].emit('disconnected')
     await flush()
     expect(TalkStore.get()).toEqual({ state: 'ended', reason: 'room_closed' })
+  })
+})
+
+describe('the agent joining', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    lk.state.agentAbsent = true
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('is not live until the agent is in the room', async () => {
+    const started = startTalk()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(TalkStore.get()).toEqual({ state: 'connecting', reason: null })
+
+    lk.state.rooms[0].remoteParticipants.set('agent', { attributes: {} })
+    await vi.advanceTimersByTimeAsync(AGENT_JOIN_POLL_MS)
+    await started
+    expect(TalkStore.get()).toEqual({ state: 'live', reason: null })
+  })
+
+  it('ends with agent_absent when the agent never joins, and releases the room', async () => {
+    const started = startTalk().catch((err: unknown) => err)
+    await vi.advanceTimersByTimeAsync(AGENT_JOIN_TIMEOUT_MS + AGENT_JOIN_POLL_MS)
+
+    expect(await started).toMatchObject({ reason: 'agent_absent' })
+    expect(TalkStore.get()).toEqual({ state: 'error', reason: 'agent_absent' })
+    const [room] = lk.state.rooms
+    expect(room.disconnect).toHaveBeenCalledTimes(1)
+    expect(room.micTrack.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('a stop while waiting for the agent is a stop, not an agent_absent failure', async () => {
+    const started = startTalk()
+    await vi.advanceTimersByTimeAsync(1_000)
+    await stopTalk()
+    await vi.advanceTimersByTimeAsync(AGENT_JOIN_POLL_MS)
+
+    await expect(started).resolves.toBeUndefined()
+    expect(TalkStore.get()).toEqual({ state: 'ended', reason: 'user_stopped' })
+    expect(lk.state.rooms[0].disconnect).toHaveBeenCalledTimes(1)
   })
 })
