@@ -1,4 +1,3 @@
-import { useGLTF } from '@react-three/drei'
 import { useCallback, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
@@ -121,8 +120,3 @@ export const useAnimationService = () => {
     [actions, state]
   )
 }
-
-// Preload animation assets
-Object.values(ANIMATION_CLIPS).forEach((clip) => {
-  useGLTF.preload(clip.path)
-})

@@ -128,7 +128,7 @@ describe('crossfade on immediate performance', () => {
     expect(h.state.isTransitioning).toBe(true)
     expect(h.state.previousClipName).toBe('idle_loop')
     // Native crossfade was invoked from the outgoing action to the incoming one.
-    expect(h.actions.idle_loop.crossFadeTo).toHaveBeenCalledWith(h.actions.surprise_greet, 0.3, true)
+    expect(h.actions.idle_loop.crossFadeTo).toHaveBeenCalledWith(h.actions.surprise_greet, 0.3, false)
     expect(h.actions.surprise_greet.play).toHaveBeenCalled()
   })
 

@@ -103,13 +103,14 @@ const VRM_TARGET_TO_VISEME: Readonly<Record<string, string>> = {
  *
  * Mirrors `visemesUpdate`'s own active-window filter rather than merely checking
  * that a sequence exists — a queued-but-not-yet-started utterance must not take
- * the mouth away from the acoustic path and freeze it shut.
+ * the mouth away from the acoustic path and freeze it shut. The window runs from
+ * the attack start ts[0] to the release end ts[2]; ts[1] is only the peak.
  */
 export function isSequenceActive(state: VisemeState, now: number = performance.now()): boolean {
   const sequence = state.sequence
   if (!sequence || sequence.length === 0) return false
   for (const item of sequence) {
-    if (item.ts[0] <= now && item.ts[1] >= now) return true
+    if (item.ts[0] <= now && item.ts[2] >= now) return true
   }
   return false
 }

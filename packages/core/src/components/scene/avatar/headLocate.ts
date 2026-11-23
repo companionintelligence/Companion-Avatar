@@ -1,0 +1,93 @@
+import * as THREE from 'three'
+
+/** Metres a VRM 0.x avatar is pushed along +x after its head is located. */
+export const VRM0_HEAD_OFFSET_X = 0.2
+
+/**
+ * The x each VRM 0.x avatar had before its offset. Keyed on the avatar object, not on a
+ * component ref: a remount gets the same cached scene (useLoader caches by URL), so a
+ * per-mount base would stack the offset again each time.
+ */
+const vrm0BaseX = new WeakMap<THREE.Object3D, number>()
+
+export interface HeadLocateOptions {
+  /**
+   * Whether the avatar is a VRM, which takes the x offset. The facing is read from the eye bones;
+   * with none found, a VRM is taken to face -z and any other rig +z.
+   */
+  isVRM: boolean
+  /** Metres from the head to the camera, along the avatar's facing. */
+  cameraDistance: number
+  /** Metres to lower the look-at below the head. */
+  cameraTargetDrop: number
+}
+
+export interface HeadLocation {
+  /** The head's world position, after any VRM 0.x offset. */
+  headWorldPosition: THREE.Vector3
+  cameraTarget: [number, number, number]
+  cameraPosition: [number, number, number]
+}
+
+/** Eye bone names. Eyebrows, eyelids, lashes and look targets contain "eye" but are not eyes. */
+const EYE_BONE_NAME = /^(?!.*(brow|lid|lash|target|look)).*eye/i
+
+/**
+ * Which way the face looks: from the head toward the midpoint of its eye bones, flattened onto
+ * the XZ plane of the head's parent. Undefined when the head has no eye bones, or they sit level
+ * with the head so there is no horizontal direction to read.
+ */
+const facingFromEyes = (head: THREE.Object3D, headWorldPosition: THREE.Vector3): THREE.Vector3 | undefined => {
+  const eyes: THREE.Object3D[] = []
+  head.traverse((node) => {
+    if (node !== head && !(node as THREE.Mesh).isMesh && EYE_BONE_NAME.test(node.name)) eyes.push(node)
+  })
+  if (eyes.length === 0) return undefined
+
+  const eyeMidpoint = new THREE.Vector3()
+  for (const eye of eyes) eyeMidpoint.add(eye.getWorldPosition(new THREE.Vector3()))
+  eyeMidpoint.divideScalar(eyes.length)
+
+  const parentWorldQuat = new THREE.Quaternion()
+  head.parent?.getWorldQuaternion(parentWorldQuat)
+  const horizontal = eyeMidpoint.sub(headWorldPosition).applyQuaternion(parentWorldQuat.clone().invert())
+  horizontal.y = 0
+  if (horizontal.lengthSq() < 1e-10) return undefined
+  return horizontal.normalize().applyQuaternion(parentWorldQuat)
+}
+
+/**
+ * Work out where the camera should look and sit for an avatar's head. The VRM 0.x
+ * offset is applied first, so the camera (and the voice, which uses the same head
+ * position) follow the head where it is drawn rather than where it was before the shift.
+ */
+export const locateAvatarHead = (
+  avatar: THREE.Object3D,
+  head: THREE.Object3D,
+  options: HeadLocateOptions
+): HeadLocation => {
+  const { isVRM, cameraDistance, cameraTargetDrop } = options
+  if (isVRM) {
+    let base = vrm0BaseX.get(avatar)
+    if (base === undefined) {
+      base = avatar.position.x
+      vrm0BaseX.set(avatar, base)
+    }
+    avatar.position.x = base + VRM0_HEAD_OFFSET_X
+  }
+
+  const headWorldPosition = new THREE.Vector3()
+  head.getWorldPosition(headWorldPosition)
+  const avatarWorldQuat = new THREE.Quaternion()
+  avatar.getWorldQuaternion(avatarWorldQuat)
+  const forward =
+    facingFromEyes(head, headWorldPosition) ??
+    new THREE.Vector3(0, 0, isVRM ? -1 : 1).applyQuaternion(avatarWorldQuat).normalize()
+  const cameraTarget = headWorldPosition.clone().add(new THREE.Vector3(0, -cameraTargetDrop, 0))
+  const cameraPosition = headWorldPosition.clone().add(forward.multiplyScalar(cameraDistance))
+  return {
+    headWorldPosition,
+    cameraTarget: cameraTarget.toArray() as [number, number, number],
+    cameraPosition: cameraPosition.toArray() as [number, number, number]
+  }
+}

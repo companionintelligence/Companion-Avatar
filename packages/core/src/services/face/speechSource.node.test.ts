@@ -14,9 +14,9 @@ const NOW = 1_000
 const stateWith = (partial: Partial<VisemeState>): VisemeState =>
   ({ sequence: [], targets: undefined, dirty: {}, isVRMMode: false, ...partial }) as VisemeState
 
-const item = (start: number, end: number) => ({
+const item = (start: number, end: number, peak: number = end) => ({
   template: { name: 'x' },
-  ts: [start, end, end] as [number, number, number],
+  ts: [start, peak, end] as [number, number, number],
   vs: {}
 })
 
@@ -36,6 +36,13 @@ describe('isSequenceActive', () => {
 
   it('is true inside the active window', () => {
     expect(isSequenceActive(stateWith({ sequence: [item(NOW - 100, NOW + 100)] }), NOW)).toBe(true)
+  })
+
+  it('stays active through the release, up to ts[2]', () => {
+    // The peak ts[1] is already behind NOW, but visemesUpdate holds the mouth open until the release ends at NOW + 100.
+    const releasing = [item(NOW - 200, NOW + 100, NOW - 100)]
+    expect(isSequenceActive(stateWith({ sequence: releasing }), NOW)).toBe(true)
+    expect(isSequenceActive(stateWith({ sequence: releasing }), NOW + 150)).toBe(false)
   })
 })
 

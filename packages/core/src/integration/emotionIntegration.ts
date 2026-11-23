@@ -1,26 +1,75 @@
 import type { ConversationMessage } from '../services/conversation/conversationType'
 import type { EmotionType, PerformanceData } from '../services/emote/emoteTypes'
 
+const TOKEN_PATTERN = /[a-z]+(?:'[a-z]+)*|[.,!?;:]/g
+const NEGATORS = ['not', 'no', 'never']
+const NEGATION_WINDOW = 4
+const PUNCTUATION = new Set(['.', ',', '!', '?', ';', ':'])
+
+// "not", "no", "never" and any contraction ending in n't (don't, can't) negate a keyword.
+const isNegator = (token: string): boolean => NEGATORS.includes(token) || token.endsWith('n\'t')
+
+/**
+ * Forms a keyword word can take in running text: the word itself and its common
+ * inflections (hurts, crying, loved, lovely, greatly, sadness). Whole tokens only, so
+ * "encrypted" does not match "cry" and "made" does not match "mad".
+ */
+const inflectionsOf = (word: string): Set<string> => {
+  const stem = word.endsWith('e') ? word.slice(0, -1) : word
+  const forms = new Set([word, `${word}s`, `${word}es`, `${word}d`, `${word}ed`, `${stem}ing`, `${word}ly`, `${word}ness`, `${word}ful`])
+  // A final y becomes i before -ness, -er, -ly, -ed and -es: happiness, happier, happily, cried, cries.
+  if (word.endsWith('y')) {
+    const iStem = `${word.slice(0, -1)}i`
+    for (const suffix of ['ness', 'er', 'ly', 'ed', 'es']) forms.add(`${iStem}${suffix}`)
+  }
+  return forms
+}
+
+/**
+ * True when a negator is among the NEGATION_WINDOW tokens before `start`, with no punctuation
+ * in between. A comma or full stop ends the negation, so "No, I am happy" is not negated.
+ */
+const isNegated = (tokens: string[], start: number): boolean => {
+  for (let i = start - 1; i >= Math.max(0, start - NEGATION_WINDOW); i--) {
+    if (PUNCTUATION.has(tokens[i])) return false
+    if (isNegator(tokens[i])) return true
+  }
+  return false
+}
+
+/**
+ * True when the keyword (one or more words) appears in the tokens and is not negated (see isNegated).
+ */
+const hasKeyword = (tokens: string[], keyword: string): boolean => {
+  const forms = keyword.split(' ').map(inflectionsOf)
+  return tokens.some((_, start) => {
+    if (!forms.every((set, offset) => set.has(tokens[start + offset]))) return false
+    return !isNegated(tokens, start)
+  })
+}
+
 /**
  * Simple emotion detection based on keywords and patterns in text
  * In a production system, this could be replaced with a more sophisticated
  * emotion analysis service or AI model
  */
 export const detectEmotionFromText = (text: string): EmotionType => {
-  const lowerText = text.toLowerCase()
+  // Curly apostrophes are normalized so that "don't" with a typographic apostrophe is read as a negation.
+  const lowerText = text.toLowerCase().replace(/’/g, '\'')
+  const tokens = lowerText.match(TOKEN_PATTERN) ?? []
 
   // Happy indicators
   if (
-    lowerText.includes('happy') ||
-    lowerText.includes('joy') ||
-    lowerText.includes('excited') ||
-    lowerText.includes('great') ||
-    lowerText.includes('wonderful') ||
-    lowerText.includes('amazing') ||
-    lowerText.includes('fantastic') ||
-    lowerText.includes('excellent') ||
-    lowerText.includes('love') ||
-    lowerText.includes('celebrate') ||
+    hasKeyword(tokens, 'happy') ||
+    hasKeyword(tokens, 'joy') ||
+    hasKeyword(tokens, 'excited') ||
+    hasKeyword(tokens, 'great') ||
+    hasKeyword(tokens, 'wonderful') ||
+    hasKeyword(tokens, 'amazing') ||
+    hasKeyword(tokens, 'fantastic') ||
+    hasKeyword(tokens, 'excellent') ||
+    hasKeyword(tokens, 'love') ||
+    hasKeyword(tokens, 'celebrate') ||
     lowerText.includes('😊') ||
     lowerText.includes('😄') ||
     lowerText.includes('🎉') ||
@@ -29,16 +78,20 @@ export const detectEmotionFromText = (text: string): EmotionType => {
     return 'happy'
   }
 
-  // Sad indicators
+  // Sad indicators. A bare "sorry" is an apology rather than sadness, so only sympathy phrases count.
   if (
-    lowerText.includes('sad') ||
-    lowerText.includes('sorry') ||
-    lowerText.includes('disappointed') ||
-    lowerText.includes('unfortunate') ||
-    lowerText.includes('regret') ||
-    lowerText.includes('cry') ||
-    lowerText.includes('tears') ||
-    lowerText.includes('hurt') ||
+    hasKeyword(tokens, 'sad') ||
+    hasKeyword(tokens, 'disappointed') ||
+    hasKeyword(tokens, 'unfortunate') ||
+    hasKeyword(tokens, 'regret') ||
+    hasKeyword(tokens, 'cry') ||
+    hasKeyword(tokens, 'tears') ||
+    hasKeyword(tokens, 'hurt') ||
+    hasKeyword(tokens, 'sorry to hear') ||
+    hasKeyword(tokens, 'sorry for your loss') ||
+    hasKeyword(tokens, 'sorry you') ||
+    hasKeyword(tokens, 'so sorry') ||
+    hasKeyword(tokens, 'sorry about your') ||
     lowerText.includes('😢') ||
     lowerText.includes('😭') ||
     lowerText.includes('💔')
@@ -48,14 +101,14 @@ export const detectEmotionFromText = (text: string): EmotionType => {
 
   // Angry indicators
   if (
-    lowerText.includes('angry') ||
-    lowerText.includes('mad') ||
-    lowerText.includes('furious') ||
-    lowerText.includes('annoying') ||
-    lowerText.includes('irritated') ||
-    lowerText.includes('frustrated') ||
-    lowerText.includes('outrageous') ||
-    lowerText.includes('ridiculous') ||
+    hasKeyword(tokens, 'angry') ||
+    hasKeyword(tokens, 'mad') ||
+    hasKeyword(tokens, 'furious') ||
+    hasKeyword(tokens, 'annoying') ||
+    hasKeyword(tokens, 'irritated') ||
+    hasKeyword(tokens, 'frustrated') ||
+    hasKeyword(tokens, 'outrageous') ||
+    hasKeyword(tokens, 'ridiculous') ||
     lowerText.includes('😠') ||
     lowerText.includes('😡') ||
     lowerText.includes('🤬')
@@ -65,14 +118,14 @@ export const detectEmotionFromText = (text: string): EmotionType => {
 
   // Fear indicators
   if (
-    lowerText.includes('scared') ||
-    lowerText.includes('afraid') ||
-    lowerText.includes('frightened') ||
-    lowerText.includes('terrified') ||
-    lowerText.includes('nervous') ||
-    lowerText.includes('worried') ||
-    lowerText.includes('anxious') ||
-    lowerText.includes('panic') ||
+    hasKeyword(tokens, 'scared') ||
+    hasKeyword(tokens, 'afraid') ||
+    hasKeyword(tokens, 'frightened') ||
+    hasKeyword(tokens, 'terrified') ||
+    hasKeyword(tokens, 'nervous') ||
+    hasKeyword(tokens, 'worried') ||
+    hasKeyword(tokens, 'anxious') ||
+    hasKeyword(tokens, 'panic') ||
     lowerText.includes('😨') ||
     lowerText.includes('😰') ||
     lowerText.includes('😱')
@@ -82,13 +135,13 @@ export const detectEmotionFromText = (text: string): EmotionType => {
 
   // Disgust indicators
   if (
-    lowerText.includes('disgusting') ||
-    lowerText.includes('gross') ||
-    lowerText.includes('yuck') ||
-    lowerText.includes('revolting') ||
-    lowerText.includes('nasty') ||
-    lowerText.includes('awful') ||
-    lowerText.includes('terrible') ||
+    hasKeyword(tokens, 'disgusting') ||
+    hasKeyword(tokens, 'gross') ||
+    hasKeyword(tokens, 'yuck') ||
+    hasKeyword(tokens, 'revolting') ||
+    hasKeyword(tokens, 'nasty') ||
+    hasKeyword(tokens, 'awful') ||
+    hasKeyword(tokens, 'terrible') ||
     lowerText.includes('🤢') ||
     lowerText.includes('🤮') ||
     lowerText.includes('😷')
@@ -98,13 +151,13 @@ export const detectEmotionFromText = (text: string): EmotionType => {
 
   // Love/affection indicators
   if (
-    lowerText.includes('love you') ||
-    lowerText.includes('adore') ||
-    lowerText.includes('cherish') ||
-    lowerText.includes('romantic') ||
-    lowerText.includes('sweetheart') ||
-    lowerText.includes('darling') ||
-    lowerText.includes('beloved') ||
+    hasKeyword(tokens, 'love you') ||
+    hasKeyword(tokens, 'adore') ||
+    hasKeyword(tokens, 'cherish') ||
+    hasKeyword(tokens, 'romantic') ||
+    hasKeyword(tokens, 'sweetheart') ||
+    hasKeyword(tokens, 'darling') ||
+    hasKeyword(tokens, 'beloved') ||
     lowerText.includes('💕') ||
     lowerText.includes('💖') ||
     lowerText.includes('💗') ||
@@ -189,6 +242,16 @@ export const createPerformanceFromMessage = (
   }
 }
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Whole-word match, so 'listen' does not match 'listening' and 'stop' does not match 'stopwatch'.
+const containsWholePhrase = (text: string, phrase: string): boolean =>
+  new RegExp(`\\b${escapeRegExp(phrase)}\\b`).test(text)
+
+// "wait" interrupts only when it opens the utterance or follows an interjection or filler, and not when it is
+// a noun ("the wait time", "wait list").
+const LEADING_WAIT = /^(?:(?:oh|okay|ok|hey|um|uh|no|yes|actually|hmm|well|so|sorry|yeah)[,.!]*\s+)*wait\b(?!\s+(?:times?|lists?|lines?|rooms?)\b)/
+
 /**
  * Determine if a message should trigger barge-in behavior
  */
@@ -204,7 +267,6 @@ export const shouldTriggerBargeIn = (message: ConversationMessage): boolean => {
   // List of interruptive keywords/phrases
   const bargeInPhrases = [
     'stop',
-    'wait',
     'hold on',
     'pause',
     'enough',
@@ -222,25 +284,11 @@ export const shouldTriggerBargeIn = (message: ConversationMessage): boolean => {
     'please wait'
   ]
 
-  // Check for exact match for very short commands (e.g., "stop", "wait")
-  if (bargeInPhrases.some(phrase => lowerText === phrase)) return true
+  // Check for presence of barge-in phrases anywhere in the message, matched as whole words
+  if (bargeInPhrases.some(phrase => containsWholePhrase(lowerText, phrase))) return true
 
-  // Check for presence of barge-in phrases anywhere in the message
-  if (bargeInPhrases.some(phrase => lowerText.includes(phrase))) return true
-
-  // Heuristic: very short user utterances (1-2 words) that are imperative
-  const words = lowerText.split(/\s+/)
-  if (words.length <= 2 && (
-    words.includes('stop') ||
-    words.includes('wait') ||
-    words.includes('pause') ||
-    words.includes('enough') ||
-    words.includes('cancel')
-  )) {
-    return true
-  }
-
-  return false
+  // "Wait!" and "Okay, wait" interrupt; "what's the wait time?" does not
+  return LEADING_WAIT.test(lowerText)
 }
 
 /**

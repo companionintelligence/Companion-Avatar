@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  *  - C1: after a barge-in (stopSpeaking) clears the queue mid-playback, a fresh
  *        speak() must still play. The regression was that the interrupted audio's
  *        completion handler resumed and clobbered `nextExpectedId`, so every later
- *        message id stopped matching and all speech went silent.
+ *        message id stopped matching and all speech went silent. A stop that lands
+ *        while a buffer is still resuming or decoding must not start that buffer later.
  *  - H4: stopSpeaking must stop the AudioBufferSourceNode that is actually playing,
  *        not merely empty the queue.
  *
@@ -56,8 +57,28 @@ class MockAnalyserNode {
 
 class MockAudioContext {
   static startedSources: MockAudioBufferSourceNode[] = []
+  // When held, decodeAudioData stays pending until a test releases it, so a barge-in
+  // can land while playAudioBuffer is still between its awaits.
+  static holdDecodes = false
+  static heldDecodes: Array<() => void> = []
+  // A context created before a user gesture starts suspended; resume() then stays
+  // pending until a test releases it.
+  static startSuspended = false
+  static heldResumes: Array<() => void> = []
+  state: 'suspended' | 'running'
   currentTime = 0
   destination = {}
+  constructor() {
+    this.state = MockAudioContext.startSuspended ? 'suspended' : 'running'
+  }
+  resume() {
+    return new Promise<void>((resolve) => {
+      MockAudioContext.heldResumes.push(() => {
+        this.state = 'running'
+        resolve()
+      })
+    })
+  }
   createGain() {
     return new MockGainNode()
   }
@@ -68,7 +89,11 @@ class MockAudioContext {
     return new MockAnalyserNode()
   }
   decodeAudioData(_buffer: ArrayBuffer) {
-    return Promise.resolve({ duration: 1 } as AudioBuffer)
+    const decoded = { duration: 1 } as AudioBuffer
+    if (!MockAudioContext.holdDecodes) return Promise.resolve(decoded)
+    return new Promise<AudioBuffer>((resolve) => {
+      MockAudioContext.heldDecodes.push(() => resolve(decoded))
+    })
   }
   close() {
     return Promise.resolve()
@@ -96,6 +121,10 @@ let useTTSService: typeof import('./ttsService').useTTSService
 
 beforeEach(async () => {
   MockAudioContext.startedSources = []
+  MockAudioContext.holdDecodes = false
+  MockAudioContext.heldDecodes = []
+  MockAudioContext.startSuspended = false
+  MockAudioContext.heldResumes = []
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -174,5 +203,65 @@ describe('TTS barge-in', () => {
     await flush()
 
     expect(spokenTexts(onSpeechStart)).toContain('four')
+  })
+
+  it('C1: a barge-in while the stale buffer is still decoding does not start it', async () => {
+    MockAudioContext.holdDecodes = true
+    const { result } = renderHook(() => useTTSService({ config: { mode: 'remote' } }))
+
+    await act(async () => {
+      await result.current.actions.speak('one')
+    })
+    await flush()
+
+    // 'one' is waiting on decodeAudioData, so no source exists yet for stop() to cut off.
+    expect(MockAudioContext.heldDecodes).toHaveLength(1)
+    expect(MockAudioContext.startedSources).toHaveLength(0)
+
+    await act(async () => {
+      result.current.actions.stopSpeaking()
+    })
+
+    // The decode lands after the barge-in. The stale buffer must not become a live source.
+    await act(async () => {
+      MockAudioContext.heldDecodes.shift()?.()
+    })
+    await flush()
+    expect(MockAudioContext.startedSources).toHaveLength(0)
+
+    // Speech enqueued after the barge-in still plays through its own decode.
+    await act(async () => {
+      await result.current.actions.speak('two')
+    })
+    await flush()
+    await act(async () => {
+      MockAudioContext.heldDecodes.shift()?.()
+    })
+    await flush()
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+  })
+
+  it('C1: a barge-in while the context is still resuming does not start the stale buffer', async () => {
+    MockAudioContext.startSuspended = true
+    const { result } = renderHook(() => useTTSService({ config: { mode: 'remote' } }))
+
+    await act(async () => {
+      await result.current.actions.speak('one')
+    })
+    await flush()
+
+    // 'one' is waiting on resume(), so no source exists yet for stop() to cut off.
+    expect(MockAudioContext.heldResumes).toHaveLength(1)
+
+    await act(async () => {
+      result.current.actions.stopSpeaking()
+    })
+
+    // The context resumes after the barge-in. The stale buffer must not start.
+    await act(async () => {
+      MockAudioContext.heldResumes.shift()?.()
+    })
+    await flush()
+    expect(MockAudioContext.startedSources).toHaveLength(0)
   })
 })

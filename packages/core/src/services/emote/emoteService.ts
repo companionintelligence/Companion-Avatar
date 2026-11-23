@@ -10,7 +10,7 @@ import {
   type PerformanceData
 } from './emoteTypes'
 import { updateBlinking } from './modules/blinkingService'
-import { updateFacialTicks } from './modules/facialTicksService'
+import { cancelFacialTickTimers, updateFacialTicks } from './modules/facialTicksService'
 import { updateGaze } from './modules/gazeService'
 import { moodConfigurations } from './configs/moodConfigurations'
 import { safeExecute } from './utils/errorHandling'
@@ -79,18 +79,16 @@ export const resetEmoteState = (state: EmoteState ): void => {
   state.blinkState.isBlinking = false
   state.blinkState.blinkStartTime = 0
 
-  // Reset gaze state
+  // Reset gaze state. The neck rest orientation (quaternions.default) is kept: it describes the
+  // rig, and clearing it made updateNeckGaze recapture a turned pose as the new rest (M26).
   state.gazeState.isGazing = false
   state.gazeState.gazeTime.start = 0
   state.gazeState.gazeTime.end = 0
   state.gazeState.isPlayerVisible = false
   state.gazeState.target = new Vector3(0, 0, 1)
-  if (state.gazeState.neckOptions) {
-    state.gazeState.neckOptions.quaternions.current = null
-    state.gazeState.neckOptions.quaternions.default = null
-  }
 
   // Reset tick state
+  cancelFacialTickTimers(state)
   state.tickState.currentTick = null
   state.tickState.tickStartTime = 0
 
@@ -118,7 +116,9 @@ const applyEmotionInternal = (state: EmoteState, emotion: EmotionType): void => 
   if (!emotion?.length) return
 
   const moodConfig = moodConfigurations[emotion.toLowerCase()]
-  if (!moodConfig?.baseline) return
+  // An emotion with no mood configuration (alert today) must not look applied. Throwing makes
+  // applyEmotion report a failure and a warning instead of a silent no-op (L8).
+  if (!moodConfig?.baseline) throw new Error(`No mood configuration for emotion: ${emotion}`)
 
   // Emotion baselines are sparse and intentionally omit neutral values. Clear
   // the previous baseline's keys first so e.g. angry -> happy cannot leave
@@ -150,7 +150,8 @@ const applyEmotionInternal = (state: EmoteState, emotion: EmotionType): void => 
   state.currentEmotion = emotion
 }
 
-const mapEmotionToVRM = (emotion: EmotionType): keyof typeof VRM_EXPRESSIONS | null => {
+// Exported so facialTicksService can tell which VRM key the active mood writes.
+export const mapEmotionToVRM = (emotion: EmotionType): keyof typeof VRM_EXPRESSIONS | null => {
   const emotionMap: Record<EmotionType, keyof typeof VRM_EXPRESSIONS> = {
     fear: 'surprised',
     love: 'happy',
@@ -357,6 +358,24 @@ const zeroAppliedTargets = (state: EmoteState, keys: string[]): void => {
   }
 }
 
+// The avatar effect rebuilds its morph array on every run, so compare the bound meshes instead.
+const bindsSameMeshes = (
+  bound: { morphTargetInfluences: number[] }[] | undefined,
+  next: { morphTargetInfluences: number[] }[]
+): boolean => !!bound && bound.length === next.length && bound.every((mesh, i) => mesh === next[i])
+
+/**
+ * Drop state that belongs to the previous avatar's rig: its neck rest orientation and its
+ * pending facial tick clears. Only called when the rig actually changes (M24, M26).
+ */
+const clearPreviousRigState = (state: EmoteState): void => {
+  cancelFacialTickTimers(state)
+  if (state.gazeState.neckOptions) {
+    state.gazeState.neckOptions.quaternions.current = null
+    state.gazeState.neckOptions.quaternions.default = null
+  }
+}
+
 /**
  * Setup emote state for VRM integration
  */
@@ -364,6 +383,7 @@ export const setupEmoteStateForVRM = (state: EmoteState, vrm: VRM): EmoteResult 
   return safeExecute(() => {
     if (!vrm) throw new Error('VRM is required')
 
+    if (state.vrm !== vrm) clearPreviousRigState(state)
     state.vrm = vrm
     // Clear GLB morph bindings from a previously-selected GLB avatar (GLB→VRM switch).
     state.morphs = undefined
@@ -394,6 +414,7 @@ export const setupEmoteStateForMorphTargets = (
     // Clear any VRM binding from a previously-selected VRM avatar so the per-frame
     // updateVRMSystems / applyEmoteStateToVRM path can't drive the disposed VRM
     // (blink + emotes would otherwise be dead on the new GLB after a VRM→GLB switch).
+    if (state.vrm || !bindsSameMeshes(state.morphs, morphs)) clearPreviousRigState(state)
     state.vrm = undefined
     state.morphs = morphs
     state.dictionary = dictionary

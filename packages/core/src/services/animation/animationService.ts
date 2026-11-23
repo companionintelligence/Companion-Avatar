@@ -7,8 +7,8 @@ import { getPersonalityConfiguration } from './config/personalityConfig'
 /**
  * Animation service.
  *
- * Blending is delegated to three.js' native `AnimationAction.crossFadeTo` (with
- * time-warp) instead of the previous hand-rolled per-frame weight lerp, and clip
+ * Blending is delegated to three.js' native `AnimationAction.crossFadeTo` (weight ramp,
+ * no time-warp) instead of the previous hand-rolled per-frame weight lerp, and clip
  * completion is driven by the mixer's `'finished'` event instead of an
  * elapsed-time heuristic. The public function surface is unchanged so
  * `useAnimationService` and `AvatarModel` are unaffected.
@@ -89,8 +89,17 @@ export function setupAnimationState(
   avatar?: THREE.Object3D,
   catalog?: Record<string, AnimationClip>
 ) {
-  // Re-attach cleanly if setup runs again (e.g. avatar reload).
-  detachFinishedListener(state)
+  // The queue, current clip and transition belong to the previous actions and mixer. They are
+  // dropped only when either changes identity. A re-setup of the same actions (animations switched
+  // back on for the same avatar) keeps them, so a queued gesture survives.
+  if (state.mixer !== mixer || !isSameActionSet(state.actions, actions)) {
+    // The replaced actions keep running on the mixer unless stopped, and the reset below forgets
+    // the current clip that points at them. Stop the whole old set first.
+    if (state.actions) Object.values(state.actions).forEach((action) => action.stop())
+    resetAnimationState(state)
+  } else {
+    detachFinishedListener(state)
+  }
 
   state.actions = actions
   state.mixer = mixer
@@ -102,6 +111,16 @@ export function setupAnimationState(
   ) => handleActionFinished(state, event)
   state.mixerFinishedListener = listener
   mixer.addEventListener('finished', listener)
+}
+
+/** True when both maps hold the same action instances under the same names. */
+function isSameActionSet(
+  previous: Record<string, THREE.AnimationAction> | undefined,
+  next: Record<string, THREE.AnimationAction>
+): boolean {
+  if (!previous) return false
+  const names = Object.keys(next)
+  return names.length === Object.keys(previous).length && names.every((name) => previous[name] === next[name])
 }
 
 function detachFinishedListener(state: AnimationState) {
@@ -235,7 +254,10 @@ function advanceToNext(state: AnimationState, now: number) {
   }
 
   if (!item && state.cyclingState.cyclingEnabled) {
-    item = { clip: pickNextClip(state), blendTime: undefined }
+    // An empty personality/catalog intersection yields no clip. Skip the cycle step rather
+    // than hand playClip an undefined clip.
+    const cycled = pickNextClip(state)
+    if (cycled) item = { clip: cycled, blendTime: undefined }
   }
 
   if (!item) {
@@ -271,7 +293,7 @@ function weightedCategoryPick(weights: Record<AnimationCategory, number>): Anima
   return 'idle'
 }
 
-function pickNextClip(state: AnimationState): AnimationClip {
+function pickNextClip(state: AnimationState): AnimationClip | undefined {
   const personalityConfig = getPersonalityConfiguration(state.currentPersonality)
   const allClips = getPersonalityAnimationClips(state.currentPersonality, state.catalog)
 
@@ -403,13 +425,14 @@ function playClip(state: AnimationState, clip: AnimationClip, blendTime: number)
   const blendSeconds = Math.max(0, blendTime) / 1000
 
   if (currentAction && blendSeconds > 0) {
-    // Native crossfade with time-warp. crossFadeTo ramps the weights via the mixer.
+    // Native crossfade. crossFadeTo ramps the weights via the mixer. Warp stays off so the
+    // configured clip speeds are not rewritten when the blend ends.
     action.reset()
     action.enabled = true
     action.setEffectiveTimeScale(clip.speed ?? 1)
     action.setEffectiveWeight(1.0)
     action.play()
-    currentAction.crossFadeTo(action, blendSeconds, true)
+    currentAction.crossFadeTo(action, blendSeconds, false)
 
     state.previousClipName = state.currentClip.name
     state.isTransitioning = true

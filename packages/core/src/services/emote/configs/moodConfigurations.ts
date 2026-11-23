@@ -151,4 +151,17 @@ export const moodConfigurations: Record<string, MoodOptions> = {
       deltaVolume: 0
     }
   } as MoodOptions,
+
+  alert: {
+    baseline: {
+      browInnerUp: 0.7,
+      eyeWideLeft: 0.6,
+      eyeWideRight: 0.6
+    },
+    speech: {
+      deltaRate: 0,
+      deltaPitch: 0,
+      deltaVolume: 0
+    }
+  } as MoodOptions,
 }

@@ -13,7 +13,6 @@ import { useSTTService } from './stt/sttService'
 import { useVADService } from './vad/vadService'
 import { useTTSService } from './tts/ttsService'
 import { useVisemeService } from './visemes/useVisemeService'
-import type { GazeOptions } from './emote/configs/emoteConfig'
 import { defaultVadConfig, type VADConfig, type VADResult } from './vad/vadConfig'
 import { defaultTTSConfig, type TTSConfig, type WhisperData } from './tts/ttsConfig'
 import { defaultSTTConfig, type STTConfig } from './stt/sttConfig'
@@ -22,6 +21,11 @@ import { shouldTriggerBargeIn } from '../integration/emotionIntegration'
 import { resetActiveFace } from './face/faceCompositorRegistry'
 import { beginTurn, mark as markLatency } from './telemetry/latency'
 import { transcribeRemote } from './stt/remoteStt'
+import { GLB_ALL_CLIPS, VRMA_CLIPS } from './animation/config/animationClips'
+import { moodConfigurations } from './emote/configs/moodConfigurations'
+import { createCueParser, type CueEvent, type CueNames, type CueParseResult, type CueParser } from './cues/inlineCues'
+import { buildWordStarts, scheduleCues, type ScheduledCue, type WordStart } from './cues/cueSchedule'
+import { cleanText } from './tts/textUtils'
 
 // STT service result interface (defined locally in sttService.ts)
 interface STTPerformResult {
@@ -162,7 +166,7 @@ export interface AgentService {
     setupEmotesForMorphTargets: (morphs: MorphTargetObject[], dictionary: Record<string, number[]>) => void
     setEmotion: (emotion: EmotionType) => void
     performAction: (performanceData: PerformanceData) => void
-    triggerGaze: (options?: GazeOptions) => void
+    triggerGaze: () => void
     updateEmotes: (_delta: number) => void
     applyEmotesToVRM: (vrm: VRM) => void
     applyEmotesToMorphTargets: (morphs: MorphTargetObject[], dictionary: Record<string, number[]>) => void
@@ -197,6 +201,56 @@ const defaultAppConfig = {
 }
 
 /**
+ * What a cue tag may name. A gesture is any clip in either skeleton catalog that plays once: an avatar
+ * plays only the clips of its own catalog, so a clip it does not carry does nothing, and a looping clip
+ * (the idle loops, walking) would never end. An emote is any mood in the emote palette, which is what
+ * applyEmotion accepts.
+ */
+const CUE_CLIPS = { ...VRMA_CLIPS, ...GLB_ALL_CLIPS }
+const CUE_NAMES: CueNames = {
+  gesture: Object.keys(CUE_CLIPS).filter((name) => CUE_CLIPS[name].loopCount !== Infinity),
+  emote: Object.keys(moodConfigurations)
+}
+
+/** A breath of the reply, as it is handed to TTS, and the cues that are timed against it. */
+interface CueBreath {
+  /** The text as TTS reports it when it starts the breath. */
+  spoken: string
+  /** The speakable text. Word offsets are found in it. */
+  text: string
+  /** Where the breath starts in the reply, counted in speakable characters. */
+  start: number
+  cues: CueEvent[]
+  startedAt: number | null
+  wordStarts: WordStart[]
+}
+
+/** One assistant reply, from its first chunk to its final one. */
+interface CueTurn {
+  interrupt: number
+  parser: CueParser
+  /** Speakable characters emitted so far. */
+  emitted: number
+  /** Cues waiting for the breath that speaks the word after them. */
+  queued: CueEvent[]
+  /** Breaths handed to TTS that it has not started yet, in order. */
+  awaiting: CueBreath[]
+  /** The most recent breath. The cues at the very end of a reply belong to it. */
+  last: CueBreath | null
+  /** Timers of cues that have not fired yet. */
+  timers: Set<ReturnType<typeof setTimeout>>
+}
+
+/** Clears the timers of cues that have not fired, and the cues still waiting for speech. */
+const cancelCueTurn = (turn: CueTurn) => {
+  for (const timer of turn.timers) clearTimeout(timer)
+  turn.timers.clear()
+  turn.queued = []
+  turn.awaiting = []
+  turn.last = null
+}
+
+/**
  * Unified agent hook that combines all conversational AI services
  *
  * This hook integrates VAD, STT, LLM, TTS, Visemes, and Emotes services
@@ -225,11 +279,10 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
   // Internal state
   const [currentInterimTranscript, setCurrentInterimTranscript] = useState('')
   const interruptCounterRef = useRef(performance.now())
-  // Debounce body gestures: a reaction fires per LLM *breath* chunk (every ~1-3s), which
-  // otherwise spams the mixer and makes each gesture interrupt the last. Facial emotes still
-  // update per breath (they should track the emotion); only the body gesture is rate-limited.
-  const lastBodyGestureAtRef = useRef(0)
-  const MIN_BODY_GESTURE_INTERVAL_MS = 2600
+  // The reply being streamed. A reaction is derived once per assistant message from its whole
+  // text (M5), not per LLM breath, which arrive every ~1-3s. `interrupt` names the turn, so a
+  // reply cut off by a barge-in never carries into the next one.
+  const replyRef = useRef({ interrupt: -1, text: '' })
 
   // Initialize conversation service
   const conversation = useConversationService()
@@ -247,6 +300,109 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
     [onLLMStatus]
   )
 
+  // Cue tags. A cue is armed when TTS starts the breath that speaks the word after it, and it
+  // fires at that word. The turn is kept in a ref so its timers outlive renders.
+  const cueTurnRef = useRef<CueTurn | null>(null)
+
+  const dispatchCue = (cue: ScheduledCue) => {
+    if (cue.kind === 'emote') {
+      emotes.actions.performAction({ emotion: cue.name as EmotionType })
+      return
+    }
+    const clip = CUE_CLIPS[cue.name]
+    // Immediate, not queued: the cue is timed to its word, so it plays as that word is spoken.
+    if (clip) animations.actions.performAction({ clip, immediate: true })
+  }
+
+  const armCues = (turn: CueTurn, cues: CueEvent[], wordStarts: WordStart[], startedAt: number) => {
+    for (const cue of scheduleCues(cues, wordStarts)) {
+      const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
+        turn.timers.delete(timer)
+        dispatchCue(cue)
+      }, Math.max(0, startedAt + cue.timeMs - Date.now()))
+      turn.timers.add(timer)
+    }
+  }
+
+  const cueTurnFor = (interrupt: number): CueTurn => {
+    const current = cueTurnRef.current
+    if (current?.interrupt === interrupt) return current
+    // A new interrupt cuts the previous reply off, so its pending cues go with it.
+    if (current) cancelCueTurn(current)
+    const turn: CueTurn = {
+      interrupt,
+      parser: createCueParser(CUE_NAMES),
+      emitted: 0,
+      queued: [],
+      awaiting: [],
+      last: null,
+      timers: new Set()
+    }
+    cueTurnRef.current = turn
+    return turn
+  }
+
+  /** Returns the speakable text of a parsed chunk, and keeps its cues for the breath that speaks them. */
+  const takeCueText = (turn: CueTurn, parsed: CueParseResult): string => {
+    turn.queued.push(...parsed.cues)
+    for (const tag of parsed.unknown) {
+      console.warn(`Cue tag ${tag.kind}:${tag.name} is not a known ${tag.kind}, so it is dropped.`)
+    }
+    return parsed.text
+  }
+
+  /** Hands a breath to TTS. The cues that come before the next word are timed against it. */
+  const speakCueBreath = (turn: CueTurn, text: string) => {
+    const start = turn.emitted
+    turn.emitted += text.length
+    const spoken = cleanText(text)
+    // Registered before TTS is given the text, so the speech start can never arrive first.
+    if (spoken.trim()) {
+      const end = turn.emitted
+      const breath: CueBreath = {
+        spoken,
+        text,
+        start,
+        cues: turn.queued.filter((cue) => cue.offset < end),
+        startedAt: null,
+        wordStarts: []
+      }
+      turn.queued = turn.queued.filter((cue) => cue.offset >= end)
+      turn.awaiting.push(breath)
+      turn.last = breath
+    }
+    tts.actions.speak(text)
+  }
+
+  /** A cue at the very end of a reply has no word after it, so it fires with the last word. */
+  const attachTrailingCues = (turn: CueTurn) => {
+    const cues = turn.queued
+    turn.queued = []
+    if (cues.length === 0) return
+    const breath = turn.last
+    if (!breath) {
+      // Nothing was spoken for the cues to wait on, so they fire at once. After a barge-in,
+      // the cues of the cut-off speech are dropped instead.
+      if (turn.emitted === 0) armCues(turn, cues, [], Date.now())
+      return
+    }
+    if (breath.startedAt === null) breath.cues.push(...cues)
+    else armCues(turn, cues, breath.wordStarts, breath.startedAt)
+  }
+
+  /** TTS has started an utterance: arms the cues of the breath it speaks, timed by its word timings. */
+  const cueSpeechStarted = (text: string, whisperData: WhisperData) => {
+    const turn = cueTurnRef.current
+    const index = turn ? turn.awaiting.findIndex((breath) => breath.spoken === text) : -1
+    if (!turn || index < 0) return
+    const breath = turn.awaiting[index]
+    // TTS speaks in order, so any breath ahead of this one was skipped and will not start.
+    turn.awaiting.splice(0, index + 1)
+    breath.startedAt = Date.now()
+    breath.wordStarts = buildWordStarts(breath.text, breath.start, whisperData)
+    armCues(turn, breath.cues, breath.wordStarts, breath.startedAt)
+  }
+
   // Initialize LLM service
   const llmService = useLLMService({
     config: llmConfig,
@@ -255,32 +411,47 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
       // First token of the reply — the number that decides whether the companion
       // feels responsive or sluggish.
       markLatency('llm-first-token')
-      const breath = response.breath
+
+      // Cue tags are taken out of the stream before anything reads it. What is left is spoken,
+      // shown and judged for emotion, and each cue is timed against the word after it.
+      const turn = cueTurnFor(response.interrupt)
+      const breath = takeCueText(turn, turn.parser.push(response.breath)) +
+        (response.final ? takeCueText(turn, turn.parser.finish()) : '')
       if (breath) {
-        tts.actions.speak(breath)
+        speakCueBreath(turn, breath)
+      }
+      if (response.final) attachTrailingCues(turn)
 
-        // Analyze the response for emotional content and trigger appropriate emote
-        const message = {
-          id: Date.now().toString(),
-          text: breath,
-          isUser: false,
-          timestamp: Date.now()
-        }
-
-        const { performance: emotePerf, animation } = createReactionFromMessage(
-          message,
-          conversation.state.messages.length
-        )
-
-        // Facial emote tracks every breath; body gesture is rate-limited so gestures don't
-        // stomp each other every breath and instead read as deliberate co-speech beats.
-        emotes.actions.performAction(emotePerf)
-        if (animation) {
-          const now = Date.now()
-          if (now - lastBodyGestureAtRef.current >= MIN_BODY_GESTURE_INTERVAL_MS) {
-            lastBodyGestureAtRef.current = now
-            animations.actions.performAction(animation)
+      // One reaction per assistant message (M5). Breaths accumulate into the reply, and the
+      // facial emote and body gesture fire once, when the reply is final. The final chunk can
+      // carry no breath of its own, so it is handled outside the `if (breath)` above.
+      const reply = replyRef.current
+      if (reply.interrupt !== response.interrupt) {
+        reply.interrupt = response.interrupt
+        reply.text = ''
+      }
+      if (breath) reply.text += breath
+      if (response.final) {
+        const replyText = reply.text.trim()
+        reply.text = ''
+        if (replyText) {
+          // Analyze the reply for emotional content and trigger the matching emote
+          const message = {
+            id: Date.now().toString(),
+            text: replyText,
+            isUser: false,
+            timestamp: Date.now()
           }
+
+          const { performance: emotePerf, animation } = createReactionFromMessage(
+            message,
+            conversation.state.messages.length
+          )
+
+          emotes.actions.performAction(emotePerf)
+          // Queued, not immediate: the gesture starts once the clip now playing finishes, so it
+          // never cuts a gesture short and does not depend on a wall-clock gap.
+          if (animation) animations.actions.performAction({ ...animation, immediate: false })
         }
       }
 
@@ -293,6 +464,7 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
   const tts = useTTSService({
     config: ttsConfig,
     onSpeechStart: (text: string, whisperData: WhisperData) => {
+      cueSpeechStarted(text, whisperData)
       visemes.actions.generateSequence(whisperData)
       callbacks.onTTSSpeechStart?.(text, whisperData)
     },
@@ -320,6 +492,8 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
     resetActiveFace()
     // Drop any queued gesture performances from the interrupted turn (M20).
     animations.actions.clearQueue()
+    // Cancel the cues the interrupted reply has not fired yet, so they do not play over the next one.
+    if (cueTurnRef.current) cancelCueTurn(cueTurnRef.current)
   }, [tts.state.isSpeaking, tts.actions, emotes.actions, visemes.actions, animations.actions])
 
   // Initialize VAD service
