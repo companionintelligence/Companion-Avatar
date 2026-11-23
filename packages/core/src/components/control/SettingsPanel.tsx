@@ -19,10 +19,13 @@ import { AppConfigState } from '../../app/appConfig'
 import { useHasWebGPU } from '../../utils/useHasWebGPU'
 import { useXRLayout } from '../../utils/useXRLayout'
 import { AvatarOptions } from '../scene/avatar/AvatarOptions'
+import { CC0_AVATAR_SOURCES } from '../scene/avatar/cc0Avatars'
 import { AvatarState } from '../scene/avatar/avatarState'
 import { getActiveFacialRig } from '../../services/face/faceCompositorRegistry'
 
 const AVATAR_KEYS = Object.keys(AvatarOptions)
+/** What the avatar box accepts by name: the built-in models, and CC0 avatars that are fetched when they are chosen. */
+const AVATAR_SOURCES = { ...AvatarOptions, ...CC0_AVATAR_SOURCES }
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -132,7 +135,7 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
     'custom'
 
   const applyAvatar = useCallback((input: string) => {
-    const resolved = resolveAvatarSource(input, AvatarOptions)
+    const resolved = resolveAvatarSource(input, AVATAR_SOURCES)
     if (!resolved.ok || !resolved.url) {
       setAvatarError(resolved.message ?? 'Could not load that avatar.')
       return

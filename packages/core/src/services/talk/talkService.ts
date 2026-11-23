@@ -34,6 +34,7 @@ export type TalkReason =
   | 'talk_misconfigured' // the server has talk switched on but not set up
   | 'request_failed' // no usable token came back
   | 'connect_failed' // the room would not connect
+  | 'agent_absent' // the character agent did not join the room in time
   | 'microphone_denied' // the visitor refused the microphone
   | 'microphone_unavailable' // there is no usable microphone
 
@@ -55,6 +56,16 @@ export class TalkError extends Error {
 
 /** The participant attribute the character agent sets when it ends a conversation. Its value says why. */
 export const TALK_END_ATTRIBUTE = 'ftv.end'
+
+/**
+ * How long a visitor waits, still connecting, for the character agent to join the room. Once the agent is in the room the
+ * visitor is live. If it does not come in time the conversation ends with `agent_absent`, so nobody is left talking to an
+ * empty room.
+ */
+export const AGENT_JOIN_TIMEOUT_MS = 20_000
+
+/** How often that wait looks again, for the agent or for a stop. */
+export const AGENT_JOIN_POLL_MS = 250
 
 /** What the page knows of the session. Read it with TalkStore.get(), or through useTalkService(). */
 export const TalkStore = createSimpleStore<TalkSnapshot>({ state: 'idle', reason: null })
@@ -131,6 +142,8 @@ export function describeTalkReason(reason: TalkReason | null): string {
       return 'Everyone is talking right now. Try again in a few minutes.'
     case 'talk_misconfigured':
       return 'Talking to the companion is not set up on this server.'
+    case 'agent_absent':
+      return "The companion didn't join the conversation. Try again."
     case 'request_failed':
       return "Couldn't reach the talk service."
     case 'connect_failed':
@@ -177,6 +190,12 @@ async function connectAttempt(attempt: Attempt): Promise<void> {
     if (attempt.cancelled) {
       await closeRoom(room)
       return
+    }
+
+    // The visitor is not live until the agent is in the room, since nothing else there can answer.
+    if (!(await waitForAgent(room, attempt))) {
+      if (attempt.cancelled) return
+      throw new TalkError('agent_absent')
     }
 
     // The agent may have ended before the listeners were attached.
@@ -337,6 +356,20 @@ async function closeRoom(room: Room): Promise<void> {
     microphone?.stop()
   } catch {
     // Already stopped.
+  }
+}
+
+/**
+ * Wait until the agent is in the room. Resolves true once a remote participant is there, and false when the time runs out
+ * or the attempt ends first.
+ */
+async function waitForAgent(room: Room, attempt: Attempt): Promise<boolean> {
+  const deadline = Date.now() + AGENT_JOIN_TIMEOUT_MS
+  for (;;) {
+    if (attempt.cancelled) return false
+    if (room.remoteParticipants.size > 0) return true
+    if (Date.now() >= deadline) return false
+    await new Promise<void>((resolve) => setTimeout(resolve, AGENT_JOIN_POLL_MS))
   }
 }
 
