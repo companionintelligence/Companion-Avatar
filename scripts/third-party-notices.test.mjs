@@ -267,6 +267,14 @@ describe('the asset catalogue', () => {
     expect(ASSET_DECISION).toContain('2026-11-14')
     expect(ASSET_DECISION).toContain('permission to redistribute')
   })
+
+  it('credits the studio HDRI to Greg Zaal at Poly Haven under CC0', () => {
+    const hdri = ASSET_GROUPS.find((g) => g.files?.includes('environments/studio_small_03_1k.hdr'))
+    expect(hdri.author).toContain('Greg Zaal')
+    expect(hdri.source).toContain('polyhaven.com/a/studio_small_03')
+    expect(hdri.license).toContain('CC0')
+    expect(hdri.licenseUrl).toBe('https://creativecommons.org/publicdomain/zero/1.0/')
+  })
 })
 
 describe('the rendered notices', () => {
@@ -282,6 +290,8 @@ describe('the rendered notices', () => {
     expect(text).toContain(ASSET_DECISION.slice(0, 60))
     expect(text).toContain('CC BY-NC 4.0')
     expect(text).toContain('assets/animations/vrm/idle_loop.vrma')
+    expect(text).toContain('assets/environments/studio_small_03_1k.hdr')
+    expect(text).toMatch(/Author: Greg Zaal \(Poly Haven\)[\s\S]{0,900}CC0 1\.0 Universal/)
     expect(text).toContain('museudocomputador')
     expect(text).toMatch(/^@pmndrs\/xr \d/m)
     expect(text).toMatch(/^iwer \d/m)

@@ -188,7 +188,8 @@ jobs:
             exit 1
           fi
           for file in avatars/25-1-3_CI_model_male_Greg.glb avatars/humgen-aria-01.vrm avatars/vrm/yuki.vrm \
-            animations/Waving.glb animations/vrm/idle_loop.vrma props/xerox-alto.glb; do
+            animations/Waving.glb animations/vrm/idle_loop.vrma props/xerox-alto.glb \
+            environments/studio_small_03_1k.hdr; do
             test -f "$dist/assets/$file" || { echo "::error::assets/$file is not in the bundle."; exit 1; }
           done
           du -sh "$dist"
@@ -572,7 +573,8 @@ jobs:
           unzip -l "$apk" > "$RUNNER_TEMP/apk.txt"
           for file in assets/licenses/THIRD-PARTY-NOTICES.txt assets/licenses/LICENSE.txt assets/public/index.html \
             assets/public/assets/avatars/25-1-3_CI_model_male_Greg.glb assets/public/assets/avatars/vrm/yuki.vrm \
-            assets/public/assets/animations/vrm/idle_loop.vrma assets/public/assets/props/xerox-alto.glb; do
+            assets/public/assets/animations/vrm/idle_loop.vrma assets/public/assets/props/xerox-alto.glb \
+            assets/public/assets/environments/studio_small_03_1k.hdr; do
             grep -Fq "   $file" "$RUNNER_TEMP/apk.txt" || { echo "::error::$file is not in the APK."; exit 1; }
           done
 

@@ -2,15 +2,17 @@
 /**
  * pack-assets.mjs — package the shared avatar/environment media into an app's public dir.
  *
- * Single source of truth: /assets/{avatars,animations,props} at the repo root. Each app
- * (apps/web, apps/vision-pro) keeps NO committed copy — its public/assets/{avatars,
- * animations,props} are gitignored and regenerated here on `predev` / `prebuild`, so the
- * marketplace container build (`pnpm --filter @ci-avatar/web build`) always ships the
- * full, current media set with zero duplication or drift across apps.
+ * Single source of truth: /assets/{avatars,animations,props,environments} at the repo root.
+ * Each app (apps/web, apps/vision-pro) keeps NO committed copy — its public/assets/{avatars,
+ * animations,props,environments} are gitignored and regenerated here on `predev` /
+ * `prebuild`, so the marketplace container build (`pnpm --filter @ci-avatar/web build`)
+ * always ships the full, current media set with zero duplication or drift across apps.
  *
- * It is also the packaging GATE: every file referenced by AvatarOptions.ts or
- * DioramaProps.ts must resolve to a real file under /assets/<subtree>, or the build
- * fails here (before Vite) rather than shipping an image whose catalog 404s at runtime.
+ * It is also the packaging GATE: every file referenced by AvatarOptions.ts, DioramaProps.ts
+ * or StudioEnvironment.tsx must resolve to a real file under /assets/<subtree>, or the build
+ * fails here (before Vite) rather than shipping an image whose catalog 404s at runtime. For
+ * StudioEnvironment that file is the studio's HDRI: without it every scene would start on
+ * the generated fallback lighting, which is a net for a bad deploy, not a build to ship.
  *
  * Usage:
  *   node scripts/pack-assets.mjs [web] [vision-pro] ...   # default: all apps
@@ -24,7 +26,7 @@ const repoRoot = resolve(scriptDir, '..')
 const canonical = join(repoRoot, 'assets')
 
 // Media subtrees that live in the shared source and get packed into each app.
-const MEDIA = ['avatars', 'animations', 'props']
+const MEDIA = ['avatars', 'animations', 'props', 'environments']
 // URL-path prefix -> canonical subdir (AvatarOptions/DioramaProps paths are absolute URLs).
 const URL_PREFIX = '/assets/'
 
@@ -40,6 +42,11 @@ const CATALOGS = [
     subtree: 'props',
     path: 'packages/core/src/components/scene/environment/DioramaProps.ts',
     label: 'DioramaProps'
+  },
+  {
+    subtree: 'environments',
+    path: 'packages/core/src/components/scene/environment/StudioEnvironment.tsx',
+    label: 'StudioEnvironment'
   }
 ]
 
@@ -131,6 +138,6 @@ bytes = perApp
 
 const mb = (bytes / 1024 / 1024).toFixed(0)
 console.log(
-  `[pack-assets] packed ${totalCatalogRefs} catalog entries (avatars + props, + animations) into ` +
+  `[pack-assets] packed ${totalCatalogRefs} catalog entries (avatars, props and the studio HDRI, + animations) into ` +
     `${apps.map((a) => a.name).join(', ')} — ${mb} MB/app, single source: assets/`
 )

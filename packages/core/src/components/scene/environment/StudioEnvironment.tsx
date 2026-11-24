@@ -1,23 +1,36 @@
 /**
- * StudioEnvironment — the studio's image-based light, which can no longer take the scene down.
+ * StudioEnvironment — the studio's image-based light, served with the app and unable to take the scene down.
  *
- * drei's `<Environment preset="studio">` fetches its HDRI from raw.githack.com when the scene mounts.
- * R3F suspends the whole canvas until that file has loaded, and when the fetch fails the loader throws,
- * R3F rethrows into the page, and with no error boundary above it React unmounts everything: the page is
- * empty. That happened to https://avatar.ci.computer on 2026-11-24 (about 19:21Z to past 20:03Z): the
- * host began answering the request with a 301, then a 403, neither carrying an Access-Control-Allow-Origin
- * header, so the browser blocked it ("Could not load studio_small_03_1k.hdr: Failed to fetch"). It
- * recovered on its own by 20:47Z, and nothing in the app would have survived the next time.
+ * The light is one HDRI, `studio_small_03_1k.hdr` (1.7 MB; "Studio Small 03" by Greg Zaal, Poly Haven, CC0),
+ * the file drei's own studio preset points at. The scene used to take it from raw.githack.com when it mounted.
+ * R3F suspends the whole canvas until that file has loaded, and when the fetch fails the loader throws, R3F
+ * rethrows into the page, and with no error boundary above it React unmounts everything: the page is empty.
+ * That happened to https://avatar.ci.computer on 2026-11-24 (about 19:21Z to past 20:03Z): the host began
+ * answering the request with a 301, then a 403, neither carrying an Access-Control-Allow-Origin header, so
+ * the browser blocked it ("Could not load studio_small_03_1k.hdr: Failed to fetch"). It recovered on its own
+ * by 20:47Z, and nothing in the app would have survived the next time.
  *
- * So the environment sits in its own boundary. If it fails to load, the scene is lit by a generated one
- * instead (a few softboxes in a cube render, which needs no file and no network), and the avatar and the
- * rest of the page carry on. The generated light is a stand-in, not a copy: it was tuned until the default
- * avatar's mean luminance matched the HDRI's (134.6 against 131.9 in the same headless rig), and it has
- * less of the HDRI's sheen on glossy cloth.
+ * Two things keep it from happening again:
+ *
+ * - The file ships with the app. It lives in assets/environments/, scripts/pack-assets.mjs packs it into
+ *   every app's public/assets/ (and fails the build if it is missing), and it is served from the app's own
+ *   origin, so the scene asks no third party for its light and the apps start with no connection.
+ * - The environment sits in its own boundary. If the file still fails to load (a bad deploy, a file the
+ *   browser cannot decode), the scene is lit by a generated one instead (a few softboxes in a cube render,
+ *   which needs no file and no network), and the avatar and the rest of the page carry on. The generated
+ *   light is a stand-in, not a copy: it was tuned until the default avatar's mean luminance matched the
+ *   HDRI's (134.6 against 131.9 in the same headless rig), and it has less of the HDRI's sheen on glossy cloth.
  */
 import { Environment, Lightformer } from '@react-three/drei'
 import { Component } from 'react'
 import type { ReactNode } from 'react'
+
+/**
+ * Where the studio's HDRI is served from: the app's own origin, packed from assets/environments/ like the
+ * avatars (absolute, as theirs are). scripts/pack-assets.mjs reads this file and fails the build when the
+ * file is not there; scripts/third-party/assets.mjs holds its credit.
+ */
+export const STUDIO_HDRI_URL = '/assets/environments/studio_small_03_1k.hdr'
 
 interface EnvironmentBoundaryProps {
   /** Shown in place of the children when one of them throws. */
@@ -77,7 +90,7 @@ export interface StudioEnvironmentProps {
 export function StudioEnvironment({ intensity = 1 }: StudioEnvironmentProps) {
   return (
     <EnvironmentBoundary fallback={<GeneratedStudioEnvironment intensity={intensity} />}>
-      <Environment preset="studio" background={false} environmentIntensity={intensity} />
+      <Environment files={STUDIO_HDRI_URL} background={false} environmentIntensity={intensity} />
     </EnvironmentBoundary>
   )
 }
