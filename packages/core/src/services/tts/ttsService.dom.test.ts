@@ -11,6 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  *        while a buffer is still resuming or decoding must not start that buffer later.
  *  - H4: stopSpeaking must stop the AudioBufferSourceNode that is actually playing,
  *        not merely empty the queue.
+ *  - Id gaps: speak() must not take a queue id for text that cleans to nothing (a bare
+ *        `---` or `**`). processQueue only ever looks for `nextExpectedId`, so an id that
+ *        was handed out but never queued stalled every message after it — the same
+ *        silence as C1, reached through speak() instead of through a barge-in.
  *
  * These exercise the real hook against a mocked Web Audio + fetch surface. Because
  * the queue keys on a module-global id counter, each test re-imports the module so
@@ -264,4 +268,32 @@ describe('TTS barge-in', () => {
     await flush()
     expect(MockAudioContext.startedSources).toHaveLength(0)
   })
+})
+
+describe('TTS queue ids', () => {
+  // `cleanText` strips `* < > # % -`, so each of these is non-blank going in and blank
+  // coming out. `---` is a markdown rule: a reply that ends in one is enough to hit
+  // this. `* * *` is the same rule spelled with spaces, so cleaning leaves spaces
+  // rather than an empty string and only a trim() afterwards sees it as empty.
+  it.each(['---', '**', '* * *'])(
+    'speak(%j) takes no id, so the speech after it still plays',
+    async (silent) => {
+      const onSpeechStart = vi.fn()
+      const { result } = renderHook(() =>
+        useTTSService({ config: { mode: 'remote' }, onSpeechStart })
+      )
+
+      let silentId: number | null | undefined
+      await act(async () => {
+        silentId = await result.current.actions.speak(silent)
+        await result.current.actions.speak('hello there')
+      })
+      await flush()
+
+      // The silent text is never queued. If it still took an id, processQueue would
+      // wait on that id forever and 'hello there' would never start.
+      expect(spokenTexts(onSpeechStart)).toEqual(['hello there'])
+      expect(silentId).toBeNull()
+    }
+  )
 })

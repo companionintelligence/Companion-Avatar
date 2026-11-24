@@ -641,10 +641,14 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
     async (text: string) => {
       if (!text.trim()) return null
 
-      const messageId = globalId++
+      // Clean first, and take an id only for a message that will really be queued.
+      // processQueue looks for exactly `nextExpectedId`, so an id handed out and then
+      // dropped (`---` or `**` cleans to nothing) would strand every message after it
+      // until the next stopSpeaking() resynced the cursor.
       const cleanedText = cleanText(text)
+      if (!cleanedText.trim()) return null
 
-      if (!cleanedText.trim()) return messageId
+      const messageId = globalId++
 
       const queuedMessage: QueuedMessage = {
         id: messageId,
