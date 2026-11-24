@@ -25,11 +25,17 @@ Every finding was re-checked against the code at the head of PR #220 (`fix/anima
 tests and code comments number these findings differently (the "C1/H4" in cc813dc is C1 and H2 here).
 Three findings are listed twice in this document: H1 = H7, H4 = H9 and H10 = H11.
 
+H1 and H7 are fixed. The gaze reads each rig's forward axis from where its eyes sit relative to its head
+(`services/emote/modules/faceFrame.ts`) instead of taking local -z, which only a VRM 0.x avatar looks along. The vision
+cone, the neck aim, the eye aim and the neutral gaze target use it, so the Ready Player Me, Mixamo and VRM 1.0 avatars,
+which face +z, turn their neck and eyes to a camera in front of them. A rig with no eyes to read keeps the maths it had.
+The bone-name mismatch had been fixed earlier (2673e25, aec1750).
+
 | Status | Count | Findings |
 |---|---:|---|
 | Fixed before PR #220 | 25 | C1, C2, H2, H3, H4, H5, H6, H8, H9, H10, H11, H12, M2, M6, M7, M10, M17, M20, M21, M23, M28, L6, L10, L13, L14 |
-| Fixed by PR #220 | 19 | M3, M5, M8, M9, M11, M13, M14, M15, M18, M19, M22, M24, M25, M26, L2, L5, L7, L8, L12 |
-| Partly fixed | 9 | H1, H7, M4, M27, M29, L1, L3, L4, L11 |
+| Fixed by PR #220 | 21 | H1, H7, M3, M5, M8, M9, M11, M13, M14, M15, M18, M19, M22, M24, M25, M26, L2, L5, L7, L8, L12 |
+| Partly fixed | 7 | M4, M27, M29, L1, L3, L4, L11 |
 | Open | 6 | M1, M12, M16, L9, L15, L16 |
 
 The review predates commit 671a9e1 (2026-08-26), which made the FaceCompositor the only writer of the face.
@@ -40,7 +46,6 @@ What is left:
 
 | Finding | Status | What remains |
 |---|---|---|
-| H1, H7 | Partly fixed | The bone-name mismatch was fixed (2673e25, aec1750). The gaze maths still reads the face's forward as local -z, but the shipped Ready Player Me and Mixamo avatars face +z. The vision cone calls a camera in front of them "not visible", so neck and eye gaze never engage. The GLB eye aim added by PR #220 is switched off for such rigs, so their eyes stay at rest, until the aim, the cone and the neck read the rig's own forward axis. |
 | M1 | Open | The capture window in `e2e/capture/gen-webp.mjs` can still cross the loop seam when a screenshot takes longer than about 110 ms. |
 | M4 | Partly fixed | Whole-word matching fixed "await", "listening" and "nonstop". "Bus stop", "fair enough", "cancel my order" and "listen to music" still trigger a barge-in. |
 | M12 | Open | Emotion relaxation still decays from the first frame, with no hold. The ARKit morphs show it; the VRM preset half no longer reaches the face. |
