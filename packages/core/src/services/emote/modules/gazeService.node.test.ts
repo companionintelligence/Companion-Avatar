@@ -233,6 +233,7 @@ describe.each([
     const rig = buildRig(data)
     const faceOf = trackFace(rig)
     const rest = rig.neck.quaternion.clone()
+    const eyeRest = new Map([rig.leftEye, rig.rightEye].map((eye) => [eye, eye.quaternion.clone()]))
     placeCamera(rig, 60, 0)
     step(rig.state, 600)
     expect(rig.neck.quaternion.angleTo(rest)).toBeGreaterThan(MathUtils.DEG2RAD * 5)
@@ -242,9 +243,11 @@ describe.each([
 
     expect(rig.state.gazeState.isPlayerVisible).toBe(false)
     expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
-    // Straight ahead of the head, level: the two eyes are about 2 degrees closer than parallel to meet a point 1 m away
+    // The eyes are back at their rest orientation, straight ahead of the head and level: they used to swing to the
+    // yaw limit, toward a point behind them
     for (const eye of [rig.leftEye, rig.rightEye]) {
-      expect(toDegrees * faceOf(eye).angleTo(faceOf(rig.head))).toBeLessThan(3)
+      expect(eye.quaternion.angleTo(eyeRest.get(eye) as Quaternion)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+      expect(toDegrees * faceOf(eye).angleTo(faceOf(rig.head))).toBeLessThan(0.5)
     }
   })
 
@@ -330,11 +333,11 @@ describe.each([
 
     expect(rig.state.gazeState.isPlayerVisible).toBe(false)
     expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
-    // The point the eyes rest on is 1 m ahead of the face, along +z in the world, level with the eyes. It used to
-    // be a fixed point 1 m behind a turned VRM 0.x avatar, which the look-at met with the eyes at their yaw limit.
+    // The point the eyes rest on is far ahead of the face, along +z in the world, level with the eyes. It used to be
+    // a fixed point 1 m behind a turned VRM 0.x avatar, which the look-at met with the eyes at their yaw limit.
     const ahead = lastLookAt(lookAt).clone().sub(midpoint(rig.leftEye, rig.rightEye))
-    expect(ahead.length()).toBeCloseTo(1, 6)
-    expect(toDegrees * ahead.angleTo(new Vector3(0, 0, 1))).toBeLessThan(0.5)
+    expect(ahead.length()).toBeCloseTo(10, 6)
+    expect(toDegrees * ahead.angleTo(new Vector3(0, 0, 1))).toBeLessThan(0.1)
   })
 })
 

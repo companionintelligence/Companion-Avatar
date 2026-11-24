@@ -15,8 +15,9 @@ type EyeAngles = { h: number; v: number }
 
 const UP = new Vector3(0, 1, 0)
 
-// How far ahead of the face the neutral gaze target sits, in metres.
-const NEUTRAL_DISTANCE = 1
+// How far ahead of the face the neutral gaze target sits, in metres. Far enough that the eyes look parallel, as
+// they do at rest: at 1 m each eye would turn about 2 degrees toward the other.
+const NEUTRAL_DISTANCE = 10
 
 // Scratch objects for the per-frame gaze path, so it does not allocate. Nothing here is stored
 // on state: values are cloned or copied before they are kept.
@@ -111,8 +112,9 @@ const updateGazeInternal = (state: EmoteState, delta: number , config : EmoteCon
   applyGazeBehavior(state, visibilityState, delta , config, face)
 }
 
-// The point the eyes rest on when there is nothing to look at: straight ahead of the face, level with the
-// eyes. A rig whose face cannot be read keeps the point this was tuned on, 1.5 m up and 1 m along -z.
+// The point the eyes rest on when there is nothing to look at: far ahead of the face, level with the eyes, so
+// that they settle at their rest orientation. A rig whose face cannot be read keeps the point this was tuned
+// on, 1.5 m up and 1 m along -z.
 const neutralGazeTarget = (state: EmoteState, face: FaceFrame, out: Vector3): Vector3 => {
   if (face.legacy || !state.node) return out.set(0, 1.5, -1)
 

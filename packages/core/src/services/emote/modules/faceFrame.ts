@@ -1,5 +1,5 @@
-import { Euler, Quaternion, Vector3 } from 'three'
-import type { Mesh, Object3D } from 'three'
+import { Quaternion, Vector3 } from 'three'
+import type { Euler, Mesh, Object3D } from 'three'
 
 import type { EmoteState } from '../emoteTypes'
 
