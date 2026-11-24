@@ -69,6 +69,25 @@ export function requestedSpeechFromEnv(env: Record<string, string | undefined>):
   return { ...(engine !== null && { engine }), ...(volume !== null && { volume }) }
 }
 
+/**
+ * What a harness test run speaks with once the environment has been read: what it asked for,
+ * and for the rest the voice every machine can measure.
+ *
+ * The page's own default is silent, so a run that took it would give the speech layer nothing
+ * to report and every test that waits for the mouth would time out. Synthetic at full level
+ * reaches the analyser with the same samples on any machine; the browser engine does not (it
+ * needs installed voices, and a Linux runner without any gets one `synthesis-failed` event).
+ *
+ * The level only defaults to 1 for the synthetic voice. Browser speech goes through the
+ * operating system, which Chromium's `--mute-audio` does not silence, and it fires its word
+ * boundaries at level 0 all the same, so a browser run stays quiet unless it asks for sound.
+ */
+export function harnessRunSpeech(env: Record<string, string | undefined>): SpeechMode {
+  const requested = requestedSpeechFromEnv(env) ?? {}
+  const engine = requested.engine ?? 'synthetic'
+  return { engine, volume: requested.volume ?? (engine === 'synthetic' ? 1 : 0) }
+}
+
 /** Query-string pairs for a requested mode. Empty for no request, so the URL is then the one it always was. */
 export function speechParamsFor(requested: Partial<SpeechMode> | null): string {
   if (!requested) return ''

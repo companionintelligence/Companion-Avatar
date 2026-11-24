@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DEFAULT_SPEECH_MODE,
+  harnessRunSpeech,
   needsSilencedOutput,
   requestedSpeechFromEnv,
   speechModeFromParams,
@@ -61,6 +62,33 @@ describe('requestedSpeechFromEnv', () => {
     expect(speechParamsFor(requested)).toBe('tts=synthetic&ttsVolume=0.25')
     expect(speechModeFromParams(params(speechParamsFor(requested)))).toEqual({ engine: 'synthetic', volume: 0.25 })
     expect(speechParamsFor({ engine: 'browser' })).toBe('tts=browser')
+  })
+})
+
+describe('harnessRunSpeech', () => {
+  it('gives a run with no request the voice the analyser can measure', () => {
+    expect(harnessRunSpeech({})).toEqual({ engine: 'synthetic', volume: 1 })
+    expect(harnessRunSpeech({ HARNESS_TTS: '', HARNESS_TTS_VOLUME: ' ' })).toEqual({ engine: 'synthetic', volume: 1 })
+  })
+
+  it('keeps the browser engine quiet unless the run asks for sound', () => {
+    expect(harnessRunSpeech({ HARNESS_TTS: 'browser' })).toEqual({ engine: 'browser', volume: 0 })
+    expect(harnessRunSpeech({ HARNESS_TTS: 'browser', HARNESS_TTS_VOLUME: '0.5' })).toEqual({
+      engine: 'browser',
+      volume: 0.5
+    })
+  })
+
+  it('lets a run choose the old silent page', () => {
+    expect(harnessRunSpeech({ HARNESS_TTS_VOLUME: '0' })).toEqual({ engine: 'synthetic', volume: 0 })
+    expect(harnessRunSpeech({ HARNESS_TTS: 'synthetic', HARNESS_TTS_VOLUME: '0.25' })).toEqual({
+      engine: 'synthetic',
+      volume: 0.25
+    })
+  })
+
+  it('still stops on a value it does not know', () => {
+    expect(() => harnessRunSpeech({ HARNESS_TTS: 'festival' })).toThrow(/HARNESS_TTS=festival/)
   })
 })
 

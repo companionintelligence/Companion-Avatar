@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { harnessRunSpeech } from './apps/web/src/harness/speechMode'
 
 /**
  * Render suites for the avatar harness (tests/avatar-visual-matrix.spec.ts,
@@ -10,17 +11,26 @@ import { defineConfig, devices } from '@playwright/test'
  *
  * The web server is started and stopped by the test run, on 127.0.0.1 only.
  *
- * Speech source: HARNESS_TTS=synthetic|browser and HARNESS_TTS_VOLUME=0..1 choose what the
- * avatar speaks with for the whole run (tests/support/harnessUrl.ts adds them to every
- * harness URL; apps/web/src/harness/speechMode.ts says what each combination gives).
+ * Speech source: the avatar speaks with the synthetic voice at full level unless the run
+ * says otherwise. HARNESS_TTS=synthetic|browser and HARNESS_TTS_VOLUME=0..1 choose it
+ * (tests/support/harnessUrl.ts adds them to every harness URL, and
+ * apps/web/src/harness/speechMode.ts says what each combination gives). The page's own
+ * default is silent, which leaves the speech layer with no source to report, and most of
+ * these tests wait for the mouth to move while the avatar speaks.
  *
  * Run:
  *   pnpm exec playwright test -c playwright.config.harness.ts
  *   pnpm exec playwright test -c playwright.config.harness.ts --grep 'Greg|Erik'
  *   HARNESS_TTS=browser pnpm exec playwright test -c playwright.config.harness.ts
+ *   HARNESS_TTS_VOLUME=0 pnpm exec playwright test -c playwright.config.harness.ts
  */
 const PORT = Number(process.env.HARNESS_PORT || 5204)
 const BASE_URL = `http://127.0.0.1:${PORT}`
+
+// Set before any worker starts, so every spec file reads the same choice from the environment.
+const runSpeech = harnessRunSpeech(process.env)
+process.env.HARNESS_TTS = runSpeech.engine
+process.env.HARNESS_TTS_VOLUME = String(runSpeech.volume)
 
 export default defineConfig({
   testDir: './tests',
