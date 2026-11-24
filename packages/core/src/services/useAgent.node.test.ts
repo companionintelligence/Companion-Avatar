@@ -19,6 +19,7 @@ const spies = vi.hoisted(() => ({
   onSpeechStart: undefined as undefined | ((text: string, whisperData: WhisperData) => void),
   agent: undefined as undefined | AgentService,
   speak: vi.fn(),
+  stopSpeaking: vi.fn(),
   emotePerform: vi.fn(),
   bodyPerform: vi.fn()
 }))
@@ -43,7 +44,7 @@ vi.mock('./tts/ttsService', () => ({
     spies.onSpeechStart = options.onSpeechStart
     return {
       state: { isSpeaking: false, audioQueue: 0 },
-      actions: { speak: spies.speak, stopSpeaking: vi.fn(), playAudioBuffer: vi.fn(), getQueueStatus: vi.fn() }
+      actions: { speak: spies.speak, stopSpeaking: spies.stopSpeaking, playAudioBuffer: vi.fn(), getQueueStatus: vi.fn() }
     }
   }
 }))
@@ -228,6 +229,20 @@ describe('useAgent cue tags', () => {
     spies.agent?.actions.triggerBargein()
     vi.runAllTimers()
 
+    expect(spies.bodyPerform).not.toHaveBeenCalled()
+  })
+
+  it('stopping speech from the Stop button stops the audio and cancels cues that have not fired yet', () => {
+    // The status pill calls stopSpeaking directly instead of going through a barge-in. A wave or an emote
+    // armed for a word the avatar was about to say must not fire after the user stopped it.
+    const onResponse = startAgent()
+    onResponse(chunk('Sure, [gesture:Waving] let me check.', true, 1))
+    speechStarts('Sure, let me check.', { words: ['Sure,', 'let'], wtimes: [0, 300] })
+
+    spies.agent?.actions.stopSpeaking()
+    vi.runAllTimers()
+
+    expect(spies.stopSpeaking).toHaveBeenCalledTimes(1)
     expect(spies.bodyPerform).not.toHaveBeenCalled()
   })
 

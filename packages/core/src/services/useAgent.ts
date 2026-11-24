@@ -631,6 +631,14 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
     performBargeIn()
   }, [performBargeIn])
 
+  // The status pill's Stop calls this instead of a barge-in. It stops the audio, and the cues armed for
+  // words that will now never be spoken stop with it: a wave or an emote must not fire after the user
+  // has stopped the avatar mid-sentence.
+  const stopSpeaking = useCallback(() => {
+    tts.actions.stopSpeaking()
+    if (cueTurnRef.current) cancelCueTurn(cueTurnRef.current)
+  }, [tts.actions])
+
   // Memoize the services object to prevent unnecessary re-renders
   const services = useMemo(
     () => ({
@@ -666,7 +674,7 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
 
       // TTS actions
       speak: tts.actions.speak,
-      stopSpeaking: tts.actions.stopSpeaking,
+      stopSpeaking,
       playAudioBuffer: tts.actions.playAudioBuffer,
       getTTSQueueStatus: tts.actions.getQueueStatus,
 
@@ -710,7 +718,7 @@ export const useAgent = (config: AgentConfig = {}, callbacks: AgentCallbacks = {
       llmService.actions.processUserInput,
       llmService.actions.clearHistory,
       tts.actions.speak,
-      tts.actions.stopSpeaking,
+      stopSpeaking,
       tts.actions.playAudioBuffer,
       tts.actions.getQueueStatus,
       conversation.actions.addMessage,
