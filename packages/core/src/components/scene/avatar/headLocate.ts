@@ -34,10 +34,18 @@ const EYE_BONE_NAME = /^(?!.*(brow|lid|lash|target|look)).*eye/i
 
 /**
  * Which way the face looks: from the head toward the midpoint of its eye bones, flattened onto
- * the XZ plane of the head's parent. Undefined when the head has no eye bones, or they sit level
- * with the head so there is no horizontal direction to read.
+ * the avatar's own XZ plane, which is level for the avatar. Undefined when the head has no eye
+ * bones, or they sit level with the head so there is no horizontal direction to read.
+ *
+ * The plane must be the avatar's, not the head's parent's. The Ready Player Me and Mixamo rigs rest
+ * with the neck leaning forward about 23 degrees, so the neck's XZ plane slopes down toward the
+ * front, and a facing flattened there points below the horizon and parks the camera under the head.
  */
-const facingFromEyes = (head: THREE.Object3D, headWorldPosition: THREE.Vector3): THREE.Vector3 | undefined => {
+const facingFromEyes = (
+  avatar: THREE.Object3D,
+  head: THREE.Object3D,
+  headWorldPosition: THREE.Vector3
+): THREE.Vector3 | undefined => {
   const eyes: THREE.Object3D[] = []
   head.traverse((node) => {
     if (node !== head && !(node as THREE.Mesh).isMesh && EYE_BONE_NAME.test(node.name)) eyes.push(node)
@@ -48,12 +56,11 @@ const facingFromEyes = (head: THREE.Object3D, headWorldPosition: THREE.Vector3):
   for (const eye of eyes) eyeMidpoint.add(eye.getWorldPosition(new THREE.Vector3()))
   eyeMidpoint.divideScalar(eyes.length)
 
-  const parentWorldQuat = new THREE.Quaternion()
-  head.parent?.getWorldQuaternion(parentWorldQuat)
-  const horizontal = eyeMidpoint.sub(headWorldPosition).applyQuaternion(parentWorldQuat.clone().invert())
+  const avatarWorldQuat = avatar.getWorldQuaternion(new THREE.Quaternion())
+  const horizontal = eyeMidpoint.sub(headWorldPosition).applyQuaternion(avatarWorldQuat.clone().invert())
   horizontal.y = 0
   if (horizontal.lengthSq() < 1e-10) return undefined
-  return horizontal.normalize().applyQuaternion(parentWorldQuat)
+  return horizontal.normalize().applyQuaternion(avatarWorldQuat)
 }
 
 /**
@@ -81,7 +88,7 @@ export const locateAvatarHead = (
   const avatarWorldQuat = new THREE.Quaternion()
   avatar.getWorldQuaternion(avatarWorldQuat)
   const forward =
-    facingFromEyes(head, headWorldPosition) ??
+    facingFromEyes(avatar, head, headWorldPosition) ??
     new THREE.Vector3(0, 0, isVRM ? -1 : 1).applyQuaternion(avatarWorldQuat).normalize()
   const cameraTarget = headWorldPosition.clone().add(new THREE.Vector3(0, -cameraTargetDrop, 0))
   const cameraPosition = headWorldPosition.clone().add(forward.multiplyScalar(cameraDistance))
