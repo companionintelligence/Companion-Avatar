@@ -266,6 +266,28 @@ $ curl -sI <preview>/                       # _headers applied
 permissions-policy: xr-spatial-tracking=(self), camera=(self), ...
 ```
 
+### Nothing secret in the build output
+
+`apps/web/dist` is served to every visitor, and Vite writes every `VITE_*` value into the JavaScript at build time.
+Two of those variables are credentials: `VITE_LLM_OPENAI_API_KEY` (`packages/core/src/services/llm/config/llmConfig.ts`)
+and `VITE_TTS_API_KEY` (`packages/core/src/services/tts/ttsConfig.ts`). A key set in the Pages dashboard, in a repository
+variable or in a `.env.local` would be published with the app. API keys belong on the proxy (`apps/proxy`), which is why
+it exists, and `scripts/pages-config.mjs` already refuses them in `config.json`.
+
+`scripts/check-dist-secrets.mjs` is the check for the rest of the output. `vite build` runs it (`apps/web/vite.config.ts`),
+so the pnpm build, the Pages build and the container build all do, and it fails the build on either of two findings:
+
+- the **value** of any build variable whose name ends in `API_KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSPHRASE` or
+  `CREDENTIALS` (from the build environment, or from a `.env` file in `apps/web` or the repository root; `.env.example`
+  and `.env.local.default` are placeholders and are skipped) is in a text file of the output, as written, URL-encoded or
+  JSON-escaped. Values shorter than 12 characters are ignored;
+- a string **shaped like** a credential is in the output: a provider key (`sk-...`), an AWS access key id, a GitHub,
+  Slack or Tailscale token, a private key block, a literal `Bearer <token>`, or a URL with a password.
+
+A finding names the file, the rule and, for a value, the variable. It never prints the secret. A public Sentry DSN
+(`VITE_SENTRY_DSN`) is not a finding. Binary assets, source maps and `node_modules` are not read. To run it by hand after
+a build: `node scripts/check-dist-secrets.mjs [dist dir] [env dir ...]`.
+
 ### Installing it as an app (PWA)
 
 `avatar.ci.computer` can be installed from the browser, with no store review. The files below make it
