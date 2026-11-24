@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { FaceCompositor } from '../FaceCompositor'
+import { DEFAULT_FACE_LAYERS, FACE_LAYERS } from '../layers'
+import { MOUTH_REGIONS, keysInRegion } from '../regions'
 import { MorphTargetFaceRig, type MorphTargetMeshLike } from './morphTargetRig'
+import { VISEME_FOLD_KEYS, VISEME_IDS, VISEME_TO_ARKIT } from './visemeFold'
 import { VrmExpressionFaceRig, type VrmExpressionManagerLike } from './vrmExpressionRig'
 
 const mesh = (names: string[]): MorphTargetMeshLike => ({
@@ -75,6 +79,235 @@ describe('MorphTargetFaceRig', () => {
 
   it('tolerates a mesh with no morph data', () => {
     expect(() => new MorphTargetFaceRig([{}, mesh(['jawOpen'])])).not.toThrow()
+  })
+})
+
+describe('MorphTargetFaceRig — a viseme on a head with no viseme morphs', () => {
+  const OPEN_AA = VISEME_TO_ARKIT.aa.jawOpen
+
+  it('opens a one-morph head, the way Brit, Liam and Liam CES are built', () => {
+    // These three catalog avatars ship `mouthOpen` and `mouthSmile` and nothing else. The
+    // timed lip-sync tiers publish only `viseme:` keys, which used to reach no morph here.
+    const m = mesh(['mouthOpen', 'mouthSmile'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 1)
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(OPEN_AA)
+    expect(valueOf(m, 'mouthSmile')).toBe(0)
+  })
+
+  it('scales the shape by the viseme weight', () => {
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 0.5)
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(OPEN_AA * 0.5)
+  })
+
+  it('shows the strongest of two overlapping visemes, not the one written last', () => {
+    // Coarticulation: the next shape ramps in while the last one is still ramping out.
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 0.5)
+    rig.write('viseme:E', 1)
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(Math.max(OPEN_AA * 0.5, VISEME_TO_ARKIT.E.jawOpen))
+    expect(valueOf(m, 'mouthOpen')).toBeGreaterThan(VISEME_TO_ARKIT.E.jawOpen)
+  })
+
+  it('keeps a viseme that has not been rewritten when another one changes', () => {
+    // The compositor sends a key only when its value moved, so a steady viseme is silent.
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 1)
+    rig.write('viseme:E', 0.2)
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(OPEN_AA)
+  })
+
+  it('closes when the viseme lets go', () => {
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 1)
+    rig.write('viseme:aa', 0)
+    expect(valueOf(m, 'mouthOpen')).toBe(0)
+  })
+
+  it('falls back to the weaker viseme when the stronger one lets go', () => {
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 1)
+    rig.write('viseme:O', 1)
+    rig.write('viseme:aa', 0)
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(VISEME_TO_ARKIT.O.jawOpen)
+  })
+
+  it('folds onto the ARKit morphs a head has, and leaves the ones it lacks', () => {
+    const m = mesh(['jawOpen', 'mouthFunnel', 'mouthPucker', 'eyeBlinkLeft'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:O', 1)
+    expect(valueOf(m, 'jawOpen')).toBeCloseTo(VISEME_TO_ARKIT.O.jawOpen)
+    expect(valueOf(m, 'mouthFunnel')).toBeCloseTo(VISEME_TO_ARKIT.O.mouthFunnel)
+    expect(valueOf(m, 'mouthPucker')).toBeCloseTo(VISEME_TO_ARKIT.O.mouthPucker)
+    expect(valueOf(m, 'eyeBlinkLeft')).toBe(0)
+  })
+
+  it('drives every mesh that shares a morph name', () => {
+    const head = mesh(['jawOpen'])
+    const teeth = mesh(['jawOpen'])
+    const rig = new MorphTargetFaceRig([head, teeth])
+    rig.write('viseme:aa', 1)
+    expect(valueOf(head, 'jawOpen')).toBeCloseTo(OPEN_AA)
+    expect(valueOf(teeth, 'jawOpen')).toBeCloseTo(OPEN_AA)
+  })
+
+  it('does not touch a head that carries Oculus visemes: the exact shape is the whole answer', () => {
+    // An RPM "pro" head has ARKit morphs AND `viseme_*`. Folding as well would articulate
+    // the same shape twice and over-open it.
+    const m = mesh(['jawOpen', 'mouthFunnel', 'viseme_aa', 'viseme_PP'])
+    const rig = new MorphTargetFaceRig([m])
+    rig.write('viseme:aa', 1)
+    expect(valueOf(m, 'viseme_aa')).toBe(1)
+    expect(valueOf(m, 'jawOpen')).toBe(0)
+    expect(valueOf(m, 'mouthFunnel')).toBe(0)
+  })
+
+  it('leaves a head with only some viseme morphs on the exact path for the ones it lacks', () => {
+    const m = mesh(['jawOpen', 'viseme_aa'])
+    const rig = new MorphTargetFaceRig([m])
+    expect(rig.has('viseme:O')).toBe(false)
+    rig.write('viseme:O', 1)
+    expect(valueOf(m, 'jawOpen')).toBe(0)
+  })
+
+  it('reports which visemes it can show', () => {
+    const oneMorph = new MorphTargetFaceRig([mesh(['mouthOpen', 'mouthSmile'])])
+    expect(oneMorph.has('viseme:aa')).toBe(true)
+    expect(oneMorph.has('viseme:O')).toBe(true)
+    // Nothing on this head can make a closure, so there is nothing to fold a closure onto.
+    expect(oneMorph.has('viseme:PP')).toBe(false)
+    expect(oneMorph.has('viseme:nn')).toBe(false)
+    expect(oneMorph.has('viseme:notAViseme')).toBe(false)
+
+    const arkit = new MorphTargetFaceRig([mesh(['jawOpen', 'mouthClose', 'mouthPressLeft'])])
+    expect(arkit.has('viseme:PP')).toBe(true)
+
+    expect(new MorphTargetFaceRig([mesh(['eyeBlinkLeft'])]).has('viseme:aa')).toBe(false)
+  })
+
+  it('ignores a viseme id outside the Oculus set', () => {
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    expect(() => rig.write('viseme:__proto__', 1)).not.toThrow()
+    expect(() => rig.write('viseme:DD_RETRO', 1)).not.toThrow()
+    expect(valueOf(m, 'mouthOpen')).toBe(0)
+  })
+
+  describe('and an ARKit key written by something else', () => {
+    it('keeps a held smile when the viseme that shared it lets go', () => {
+      // `E` and a happy emote both want `mouthSmileLeft`. The compositor writes the smile
+      // once and then stays quiet while it holds, so the rig must remember it.
+      const m = mesh(['jawOpen', 'mouthSmileLeft'])
+      const rig = new MorphTargetFaceRig([m])
+      rig.write('mouthSmileLeft', 0.5)
+      rig.write('viseme:E', 1)
+      expect(valueOf(m, 'mouthSmileLeft')).toBeCloseTo(0.5)
+      rig.write('viseme:E', 0)
+      expect(valueOf(m, 'mouthSmileLeft')).toBeCloseTo(0.5)
+    })
+
+    it('shows the viseme where it asks for more, and hands back when it lets go', () => {
+      const m = mesh(['jawOpen', 'mouthSmileLeft'])
+      const rig = new MorphTargetFaceRig([m])
+      rig.write('mouthSmileLeft', 0.1)
+      rig.write('viseme:E', 1)
+      expect(valueOf(m, 'mouthSmileLeft')).toBeCloseTo(VISEME_TO_ARKIT.E.mouthSmileLeft)
+      rig.write('viseme:E', 0)
+      expect(valueOf(m, 'mouthSmileLeft')).toBeCloseTo(0.1)
+    })
+
+    it('does not let a lower request undercut the viseme that is holding the key', () => {
+      const m = mesh(['mouthOpen'])
+      const rig = new MorphTargetFaceRig([m])
+      rig.write('viseme:aa', 1)
+      rig.write('jawOpen', 0.1)
+      expect(valueOf(m, 'mouthOpen')).toBeCloseTo(OPEN_AA)
+      rig.write('viseme:aa', 0)
+      expect(valueOf(m, 'mouthOpen')).toBeCloseTo(0.1)
+    })
+
+    it('writes straight through, as before, when no viseme is involved', () => {
+      const m = mesh(['mouthOpen'])
+      const rig = new MorphTargetFaceRig([m])
+      rig.write('jawOpen', 0.4)
+      expect(valueOf(m, 'mouthOpen')).toBeCloseTo(0.4)
+      rig.write('jawOpen', 0)
+      expect(valueOf(m, 'mouthOpen')).toBe(0)
+    })
+  })
+
+  describe('the fold table', () => {
+    it('covers every viseme the schedule can name, with weights in range', () => {
+      for (const id of ['sil', 'PP', 'FF', 'TH', 'DD', 'kk', 'CH', 'SS', 'nn', 'RR', 'aa', 'E', 'I', 'O', 'U']) {
+        expect(VISEME_IDS, id).toContain(id)
+      }
+      for (const [id, weights] of Object.entries(VISEME_TO_ARKIT)) {
+        expect(Object.keys(weights).length, id).toBeGreaterThan(0)
+        for (const [key, weight] of Object.entries(weights)) {
+          expect(weight, `${id}.${key}`).toBeGreaterThan(0)
+          expect(weight, `${id}.${key}`).toBeLessThanOrEqual(1)
+          expect(VISEME_FOLD_KEYS.has(key), `${id}.${key}`).toBe(true)
+        }
+      }
+    })
+
+    it('only folds onto mouth keys, so speech claiming the mouth covers everything it moves', () => {
+      const mouthKeys = new Set(MOUTH_REGIONS.flatMap((region) => keysInRegion(region)))
+      for (const key of VISEME_FOLD_KEYS) expect(mouthKeys.has(key), key).toBe(true)
+    })
+  })
+})
+
+describe('timed speech through the compositor onto a head with no viseme morphs', () => {
+  const FRAME = 1 / 60
+  const speakFrame = (compositor: FaceCompositor, rig: MorphTargetFaceRig, visemes: Record<string, number>) => {
+    compositor.begin()
+    compositor.setAll(FACE_LAYERS.SPEECH, visemes)
+    compositor.claim(FACE_LAYERS.SPEECH, MOUTH_REGIONS)
+    compositor.applyTo(rig, FRAME)
+  }
+  const quietFrame = (compositor: FaceCompositor, rig: MorphTargetFaceRig) => {
+    compositor.begin()
+    compositor.applyTo(rig, FRAME)
+  }
+
+  it('moves a one-morph mouth while the viseme plays and closes it after', () => {
+    const m = mesh(['mouthOpen', 'mouthSmile'])
+    const rig = new MorphTargetFaceRig([m])
+    const compositor = new FaceCompositor(DEFAULT_FACE_LAYERS)
+
+    speakFrame(compositor, rig, { 'viseme:aa': 1 })
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(VISEME_TO_ARKIT.aa.jawOpen)
+
+    // Nothing publishes the viseme any more; the compositor's release ramp closes the mouth.
+    for (let i = 0; i < 90; i++) quietFrame(compositor, rig)
+    expect(valueOf(m, 'mouthOpen')).toBe(0)
+  })
+
+  it('keeps following a viseme the compositor stops resending', () => {
+    // A held viseme at a steady weight is written once and skipped on the frames after.
+    const m = mesh(['mouthOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    const compositor = new FaceCompositor(DEFAULT_FACE_LAYERS)
+
+    for (let i = 0; i < 5; i++) speakFrame(compositor, rig, { 'viseme:aa': 1 })
+    expect(valueOf(m, 'mouthOpen')).toBeCloseTo(VISEME_TO_ARKIT.aa.jawOpen)
+  })
+
+  it('a head with the exact viseme morphs is driven exactly, as it always was', () => {
+    const m = mesh(['viseme_aa', 'jawOpen'])
+    const rig = new MorphTargetFaceRig([m])
+    const compositor = new FaceCompositor(DEFAULT_FACE_LAYERS)
+
+    speakFrame(compositor, rig, { 'viseme:aa': 1 })
+    expect(valueOf(m, 'viseme_aa')).toBe(1)
+    expect(valueOf(m, 'jawOpen')).toBe(0)
   })
 })
 

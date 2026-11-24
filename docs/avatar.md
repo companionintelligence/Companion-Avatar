@@ -114,13 +114,20 @@ VRMs**, and the **HumGen pipeline avatar `Aria`** (native VRM).
 
 | Family | Examples | Facial tier |
 |---|---|---|
-| GLB — CI pro (`25-1-3_*`) | Greg (default), Ash, Cara, Brit, Jack, Courtney, Shanee, Brad, … | arkit |
-| GLB — RPM / misc | Anselm / RPM-Mixamo-T-Pose, Liam CES, Unbranded Woman | oculus-viseme / arkit |
+| GLB — CI pro (`25-1-3_*`) | Greg (default), Ash, Cara, Jack, Courtney, Shanee, Brad, … | arkit |
+| GLB — RPM / misc | Anselm / RPM-Mixamo-T-Pose, Unbranded Woman | oculus-viseme / arkit |
+| GLB — one-morph | Brit, Liam, Liam CES | none (two morphs: `mouthOpen`, `mouthSmile`) |
 | VRM — legacy | Work Boy, Casual Person, Erik, Yuki, Sport Woman, Casual Man, Scout, Maya, Sport Boy, Kenji | vrm-basic |
 | HumGen — native VRM | **Aria** | arkit (ARKit-52 as VRM custom expressions) |
 
 `Greg` is the default because it is fully rigged (ARKit morphs + Oculus visemes), so the
 out-of-box companion lip-syncs and emotes.
+
+The **one-morph** heads (Brit, Liam, Liam CES) carry only `mouthOpen` and `mouthSmile`, read from
+their GLB files. Speech can open the mouth and nothing else: the acoustic tier writes `jawOpen`,
+which reaches `mouthOpen` through the rig's legacy alias, and the timed tiers' `viseme:` keys are
+folded onto the same jaw (`packages/engine/src/face/rigs/visemeFold.ts`), so the jaw follows the
+words rather than the loudness. No path writes `mouthSmile`, so emotes do not smile on these heads.
 
 ## The HumGen → VRM pipeline
 
