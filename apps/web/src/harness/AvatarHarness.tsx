@@ -11,6 +11,8 @@
  *   ?avatar=Greg   initial avatar (AvatarOptions key)
  *   ?shot=body|upper|face   camera framing (default body)
  *   ?bg=transparent|dark    background (default dark)
+ *   ?tts=synthetic|browser  speech engine (default synthetic)
+ *   ?ttsVolume=0..1         speech level (default 0, silent) — see ./speechMode
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
@@ -28,12 +30,14 @@ import {
   useVisemeService,
   type AnimationClip,
   type EmotionType,
+  getAudioGraph,
   getFaceCompositorTrace,
   getFaceOverride,
   getFaceSpeechDebug,
   setConversationStatus,
   setFaceOverride
 } from '@ci-avatar/core'
+import { needsSilencedOutput, speechModeFromParams } from './speechMode'
 
 type Shot = 'face' | 'upper' | 'body'
 type TTSService = ReturnType<typeof useTTSService>
@@ -54,6 +58,9 @@ declare global {
 const params = new URLSearchParams(location.search)
 const initialAvatar = params.get('avatar')
 const transparent = params.get('bg') === 'transparent'
+// Fixed for the life of the page. An unknown engine or level throws here, on purpose.
+const speechMode = speechModeFromParams(params)
+const silencedOutput = needsSilencedOutput(speechMode)
 
 const SHOTS: Record<Shot, { d: number; ty: number; cy: number; fov: number }> = {
   face: { d: 1.15, ty: -0.02, cy: 0.05, fov: 26 },
@@ -129,8 +136,9 @@ function HarnessScene() {
   // `speechSynthesis` engine, so the Tier C boundary-event path can be exercised
   // against an engine that actually has voices. Default stays synthetic: it is
   // reproducible and works in headless CI, which has no voices at all.
-  const ttsMode = (params.get('tts') as 'synthetic' | 'browser' | null) ?? 'synthetic'
-  const tts = useTTSService({ config: { mode: ttsMode, volume: 0 } })
+  // Silent also means the analyser reads nothing, so the speech layer reports no
+  // source; `?ttsVolume=1` is what gives a test a mouth to watch (see ./speechMode).
+  const tts = useTTSService({ config: { mode: speechMode.engine, volume: speechMode.volume } })
   const ttsRef = useRef(tts)
   ttsRef.current = tts
   // Keep the prop identity stable while forwarding every read and command to
@@ -154,6 +162,15 @@ function HarnessScene() {
     []
   )
   const three = useThree()
+
+  useEffect(() => {
+    if (!silencedOutput) return
+    // The analyser is the one node wired to the speakers (see audioGraph). Cut that wire
+    // and the voice still reaches the analyser at full level — an analyser with a
+    // connected input and no output is pulled by the audio thread all the same — so
+    // lip-sync reads a real signal and nothing is audible, headed or headless.
+    getAudioGraph()?.analyser?.disconnect()
+  }, [])
 
   const frameRef = useRef<FrameState>({
     head: new THREE.Vector3(0, 1.5, 0),
@@ -261,6 +278,11 @@ function HarnessScene() {
       setEmote(emotion: string, relaxTime = 4000) {
         emotes.actions.performAction({ emotion: emotion as EmotionType, relaxTime })
         return true
+      },
+
+      /** The speech source this page runs on, so a run can assert it got the one it asked for. */
+      speechMode() {
+        return { ...speechMode, silencedOutput }
       },
 
       /** Drive lip-sync from text (synthetic whisper timing). */

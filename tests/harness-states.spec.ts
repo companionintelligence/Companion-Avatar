@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { AvatarOptions } from '../packages/core/src/components/scene/avatar/AvatarOptions'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { assertSpeechMode, harnessUrl } from './support/harnessUrl'
 
 /**
  * Per-state avatar captures for visual review: one canvas PNG per avatar and state,
@@ -42,12 +43,13 @@ async function waitForHarness(page: Page, avatarName: string) {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
 
-  await page.goto(`/harness.html?avatar=${encodeURIComponent(avatarName)}&shot=body&bg=dark`, {
+  await page.goto(harnessUrl({ avatar: avatarName, shot: 'body', bg: 'dark' }), {
     waitUntil: 'domcontentloaded'
   })
   await page.waitForFunction(() => (window as unknown as { __harnessReady?: boolean }).__harnessReady === true, undefined, {
     timeout: 30_000
   })
+  await assertSpeechMode(page)
   await page.waitForFunction(() => (window as unknown as { __avatarLoaded?: boolean }).__avatarLoaded === true, undefined, {
     timeout: 60_000
   })

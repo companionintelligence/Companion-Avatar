@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { assertSpeechMode, harnessUrl } from './support/harnessUrl'
 
 /**
  * Face arbitration — the regression suite for the FaceCompositor.
@@ -72,8 +73,9 @@ const LONG_UTTERANCE =
 async function loadHarness(page: Page) {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
-  await page.goto(`/harness.html?avatar=${AVATAR}&shot=face&bg=dark`, { waitUntil: 'domcontentloaded' })
+  await page.goto(harnessUrl({ avatar: AVATAR, shot: 'face', bg: 'dark' }), { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => window.__harnessReady === true, { timeout: 60_000 })
+  await assertSpeechMode(page)
   await page.waitForFunction(() => window.__avatarLoaded === true, { timeout: 90_000 })
   return errors
 }
