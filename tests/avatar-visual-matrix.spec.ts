@@ -3,6 +3,7 @@ import { AvatarOptions } from '../packages/core/src/components/scene/avatar/Avat
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { assertSpeechMode, harnessUrl } from './support/harnessUrl'
+import { LONG_UTTERANCE } from './support/utterance'
 
 /**
  * Avatar Visual & Animation Matrix Test Suite
@@ -178,11 +179,12 @@ test.describe('Avatar Visual & Animation Matrix', () => {
       })
       await page.waitForTimeout(400)
 
-      // 5. Test speech lip-sync trigger
-      await page.evaluate(() => {
+      // 5. Test speech lip-sync trigger. A long line: the first frame after an avatar starts
+      // speaking can arrive a second or two late, and a short line is over by then.
+      await page.evaluate((text) => {
         const h = (window as unknown as { __harness?: { speak(t: string): Promise<number | null> | boolean } }).__harness
-        h?.speak('Hello world')
-      })
+        h?.speak(text)
+      }, LONG_UTTERANCE)
       await waitForRenderedSpeech(page)
 
       // 6. Capture visual reference screenshot
