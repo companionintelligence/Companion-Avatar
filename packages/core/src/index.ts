@@ -105,6 +105,7 @@ export type { SceneActions } from './components/scene/Scene3D'
 // can still type the store that ControlOverlay/Viewport3D require.
 export type { XRStore } from '@react-three/xr'
 export { DatacenterDiorama } from './components/scene/environment/DatacenterDiorama'
+export { StudioEnvironment } from './components/scene/environment/StudioEnvironment'
 export { DioramaProps } from './components/scene/environment/DioramaProps'
 export type { DioramaPropName } from './components/scene/environment/DioramaProps'
 export { ENVIRONMENT_PRESETS } from './components/scene/environment/environmentTypes'

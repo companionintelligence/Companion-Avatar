@@ -71,8 +71,9 @@ export function releaseNotes({ files, tag, version, commit, repo, server = 'http
   line('## What the apps do without a server')
   line()
   line(
-    'The apps need no account and no server, though they do need an internet connection when they start: the 3D ' +
-      'scene loads its studio lighting from a public CDN (raw.githack.com). Everything else they show is bundled. ' +
+    'The apps need no account and no server. The 3D scene loads its studio lighting from a public CDN ' +
+      '(raw.githack.com) when it starts and, with no connection or if that host fails, is lit by generated lighting ' +
+      'of about the same brightness instead. Everything else they show is bundled. ' +
       'They start in demo mode:'
   )
   line()

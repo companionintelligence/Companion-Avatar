@@ -15,7 +15,6 @@
  *   ?ttsVolume=0..1         speech level (default 0, silent) — see ./speechMode
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Environment } from '@react-three/drei'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import {
@@ -35,7 +34,8 @@ import {
   getFaceOverride,
   getFaceSpeechDebug,
   setConversationStatus,
-  setFaceOverride
+  setFaceOverride,
+  StudioEnvironment
 } from '@ci-avatar/core'
 import { needsSilencedOutput, speechModeFromParams } from './speechMode'
 
@@ -529,7 +529,7 @@ function HarnessScene() {
       <ambientLight intensity={0.75} />
       <directionalLight position={[2.5, 4, 3]} intensity={1.25} />
       <directionalLight position={[-2, 1, -2]} intensity={0.35} />
-      <Environment preset="studio" background={false} />
+      <StudioEnvironment />
       <CameraRig frameRef={frameRef} />
       <Suspense fallback={null}>
         <AvatarModel

@@ -1,4 +1,4 @@
-import { Environment, OrbitControls } from '@react-three/drei'
+import { OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { createXRStore, XR, type XRStore } from '@react-three/xr'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
@@ -13,6 +13,7 @@ import { AvatarLightingRig } from '../avatar/AvatarLightingRig'
 import { isNativeShell } from '../../config/nativeShell'
 import { resolveAvatarScale } from '../avatar/avatarSizing'
 import { DatacenterDiorama } from './environment/DatacenterDiorama'
+import { StudioEnvironment } from './environment/StudioEnvironment'
 import { GraphicsFallback } from './GraphicsFallback'
 import { WebGLGate } from './WebGLGate'
 import { useRendererConfig } from './rendering/useRendererConfig'
@@ -222,7 +223,7 @@ const SceneContent = ({
           <directionalLight position={[-3, 3, 2]} intensity={0.6 * look.rigScale} color={0xeeeeff} />
           <directionalLight position={[0, 3, -5]} intensity={0.4 * look.rigScale} color={0xffeedd} />
           <directionalLight position={[0, -2, 2]} intensity={0.3 * look.rigScale} color={0xffffff} />
-          <Environment preset="studio" background={false} environmentIntensity={look.iblIntensity} />
+          <StudioEnvironment intensity={look.iblIntensity} />
         </>
       )}
 

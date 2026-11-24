@@ -73,8 +73,9 @@ plugin's `open_url` command, which the page is not granted, so they would do not
 - On-device models (WebLLM) do not run here: a worker imports the engine from a CDN (esm.run), and the
   app's content security policy blocks that import (checked in Chromium with the same policy). Bundling
   the engine with the app would fix it without loosening the policy.
-- The scene loads its studio lighting from a public CDN (raw.githack.com) when it starts, so the app needs
-  an internet connection.
+- The scene loads its studio lighting from a public CDN (raw.githack.com) when it starts. With no connection,
+  or if that host fails, it is lit by generated lighting of about the same brightness instead, and the app
+  carries on.
 - There is no updater: install a new release over the old one.
 - `identifier` is `computer.ci.avatar`, which v0.2.0 ships with. Changing it later moves the app's data
   folder, so users would lose their settings; the owner decides before any store or signed release
