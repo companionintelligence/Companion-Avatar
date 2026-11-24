@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { BoundaryTimeline } from '@ci-avatar/engine'
+import {
+  BoundaryTimeline,
+  DEFAULT_FACE_LAYERS,
+  FACE_LAYERS,
+  FaceCompositor,
+  MOUTH_REGIONS,
+  MorphTargetFaceRig,
+  type MorphTargetMeshLike
+} from '@ci-avatar/engine'
 
+import type { VisemeState } from '../visemes/visemeTypes'
 import { ScheduledSpeechSource, selectSpeechSource } from './speechSource'
 
 /**
@@ -126,5 +135,76 @@ describe('tier selection', () => {
       isSpeaking: false
     })
     expect(result.kind).toBe('none')
+  })
+})
+
+describe('timed speech on a head that only has mouthOpen and mouthSmile', () => {
+  // Brit, Liam and Liam CES ship these two morphs and no `viseme_*`. The timed tiers publish
+  // only `viseme:` keys, which used to reach no morph on such a head: the tier claimed the
+  // mouth and the mouth stayed shut.
+  const FRAME = 1 / 60
+
+  const oneMorphHead = (): MorphTargetMeshLike => ({
+    morphTargetDictionary: { mouthOpen: 0, mouthSmile: 1 },
+    morphTargetInfluences: [0, 0]
+  })
+
+  /** Run a speech source through the compositor and the rig as the render loop does; returns `mouthOpen` per frame. */
+  const play = (frames: number, contributionsAt: (frame: number) => Record<string, number>): number[] => {
+    const mesh = oneMorphHead()
+    const rig = new MorphTargetFaceRig([mesh])
+    const compositor = new FaceCompositor(DEFAULT_FACE_LAYERS)
+    const opening: number[] = []
+    for (let frame = 0; frame < frames; frame++) {
+      const contributions = contributionsAt(frame)
+      compositor.begin()
+      compositor.setAll(FACE_LAYERS.SPEECH, contributions)
+      if (Object.keys(contributions).length > 0) compositor.claim(FACE_LAYERS.SPEECH, MOUTH_REGIONS)
+      compositor.applyTo(rig, FRAME)
+      opening.push(mesh.morphTargetInfluences![0])
+    }
+    return opening
+  }
+
+  it('moves the mouth for the scheduled tier, and closes it when the words end', () => {
+    const source = new ScheduledSpeechSource()
+    source.update(timings(['hello', 'there', 'friend'], [0, 600, 1200], [450, 450, 500]))
+
+    const kinds = new Set<string>()
+    const opening = play(180, (frame) => {
+      const result = selectSpeechSource({
+        scheduled: { source, playbackSeconds: frame * FRAME, loaded: true },
+        acoustic: null,
+        isSpeaking: frame * FRAME < 1.8
+      })
+      kinds.add(result.kind)
+      return result.contributions
+    })
+
+    expect(kinds.has('scheduled')).toBe(true)
+    expect(Math.max(...opening)).toBeGreaterThan(0.2)
+    // It follows the words: it opens and closes more than once, rather than opening and holding.
+    const peaks = opening.filter((v, i) => i > 0 && i < opening.length - 1 && v > 0.15 && v >= opening[i - 1] && v > opening[i + 1])
+    expect(peaks.length).toBeGreaterThan(2)
+    expect(opening[opening.length - 1]).toBe(0)
+  })
+
+  it('moves the mouth for the legacy word-timed sequence too', () => {
+    const NOW = 1_000
+    const state = {
+      sequence: [{ template: { name: 'x' }, ts: [NOW - 100, NOW, NOW + 100], vs: {} }],
+      targets: { viseme_aa: 0.8, viseme_PP: 0 },
+      dirty: {},
+      isVRMMode: false
+    } as unknown as VisemeState
+
+    const opening = play(6, () => {
+      const result = selectSpeechSource({ visemeState: state, acoustic: null, isSpeaking: true, now: NOW })
+      expect(result.kind).toBe('sequence')
+      return result.contributions
+    })
+
+    expect(opening[0]).toBeCloseTo(0.8 * 0.6)
+    expect(opening[opening.length - 1]).toBeCloseTo(0.8 * 0.6)
   })
 })
