@@ -46,6 +46,7 @@ interface Harness {
   speechDebug(): SpeechDebug | null
   setMorph(entries: Record<string, number>): number
   clearMorphs(): void
+  vrmExpressions(): { vrm: boolean; values?: Record<string, number> }
 }
 declare global {
   interface Window {
@@ -58,10 +59,13 @@ declare global {
 /** Greg is an RPM "pro" GLB: ARKit-52 plus Oculus visemes — the richest rig we ship. */
 const AVATAR = 'Greg'
 
-async function loadHarness(page: Page) {
+/** Yuki is a VRoid-style VRM: the five standard mouth shapes and no ARKit custom expressions. */
+const VRM_AVATAR = 'Yuki'
+
+async function loadHarness(page: Page, avatar = AVATAR) {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
-  await page.goto(harnessUrl({ avatar: AVATAR, shot: 'face', bg: 'dark' }), { waitUntil: 'domcontentloaded' })
+  await page.goto(harnessUrl({ avatar, shot: 'face', bg: 'dark' }), { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => window.__harnessReady === true, { timeout: 60_000 })
   await assertSpeechMode(page)
   await page.waitForFunction(() => window.__avatarLoaded === true, { timeout: 90_000 })
@@ -216,6 +220,46 @@ test.describe('face compositor', () => {
     await page.evaluate(() => window.__harness!.clearMorphs())
     await waitForFrames(page, 4)
     expect((await snapshot(page)).jawOpen, 'clearing the override releases the key').toBeLessThan(0.2)
+  })
+})
+
+test.describe('face compositor on a VRM head', () => {
+  test('a scripted weight stays on the expression, instead of landing for one frame', async ({ page }) => {
+    // The compositor writes a key when its value changes, so a weight that holds steady is written once.
+    // A VRM rig that keeps only what was written this frame shows it for a single frame and then clears it.
+    await loadHarness(page, VRM_AVATAR)
+    const info = await page.evaluate(() => window.__harness!.vrmExpressions())
+    expect(info.vrm, `${VRM_AVATAR} must be a VRM with an expression manager`).toBe(true)
+
+    await page.evaluate(() => window.__harness!.setMorph({ jawOpen: 0.85 }))
+
+    // Sample `aa` once per rendered frame, from the frame the weight arrives on.
+    const samples = await page.evaluate(async () => {
+      const harness = window.__harness!
+      const wanted = 10
+      const aa: number[] = []
+      let lastFrame = -1
+      let ticks = 0
+      await new Promise<void>((resolve) => {
+        const tick = () => {
+          const frame = harness.speechDebug()?.frame ?? 0
+          if (frame !== lastFrame) {
+            lastFrame = frame
+            const value = harness.vrmExpressions().values?.aa ?? 0
+            if (aa.length > 0 || value > 0.5) aa.push(value)
+          }
+          // Give up rather than hang if the weight never arrives at all.
+          if (aa.length >= wanted || ++ticks > 2000) resolve()
+          else requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      return aa
+    })
+
+    expect(samples, 'the scripted jaw weight must reach the VRM at all').not.toHaveLength(0)
+    expect(samples, 'and stay for the frames that follow').toHaveLength(10)
+    for (const value of samples) expect(value, `aa over ${samples.length} frames: ${samples.join(', ')}`).toBeGreaterThan(0.8)
   })
 })
 

@@ -34,9 +34,14 @@ export interface LayerSpec {
 export interface FaceRig {
   /** Does this rig expose anything the given canonical key can drive? */
   has(key: string): boolean
-  /** Write one canonical key. Called at most once per key per frame. */
+  /**
+   * Write one canonical key. Called at most once per key per frame, and only when its
+   * value has changed: a weight that holds steady is written once, so the rig keeps
+   * the last value it was given until the next write. The compositor always ends a
+   * weight with an explicit write of 0.
+   */
   write(key: string, value: number): void
-  /** Flush, if the underlying rig batches (e.g. VRM expressionManager.update). */
+  /** Flush, if the underlying rig batches (e.g. VRM expressionManager.update). Called after every frame's writes. */
   commit?(): void
 }
 

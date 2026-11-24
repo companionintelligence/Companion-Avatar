@@ -71,6 +71,8 @@ export class FaceCompositor {
   private rigValue = new Map<string, number>()
   /** Keys with a non-zero value that no layer wrote this frame. */
   private releasing = new Map<string, number>()
+  /** The rig this compositor is driving: the last one `applyTo` wrote to or `reset` closed. */
+  private lastRig: FaceRig | null = null
 
   private lastTrace: CompositorTrace = { regions: [], written: {}, releasing: [] }
 
@@ -220,6 +222,7 @@ export class FaceCompositor {
    * writer, nothing can mutate a morph behind the cache's back.
    */
   applyTo(rig: FaceRig, delta: number): void {
+    this.lastRig = rig
     const resolved = this.resolve(delta)
 
     for (const [key, value] of resolved) {
@@ -250,8 +253,14 @@ export class FaceCompositor {
    * Zero everything immediately — barge-in, avatar swap, teardown. Distinct from
    * the release ramp: an interrupted utterance must close the mouth now, not over
    * the next 200 ms.
+   *
+   * Without a rig it closes the one this compositor has been driving. Forgetting
+   * the keys without telling the rig would strand whatever the rig still holds,
+   * and a rig that holds weights between writes (see FaceRig.write) gets no
+   * other word about them.
    */
-  reset(rig?: FaceRig): void {
+  reset(rig: FaceRig | undefined = this.lastRig ?? undefined): void {
+    if (rig) this.lastRig = rig
     for (const key of this.current.keys()) {
       if (rig?.has(key)) rig.write(key, 0)
     }

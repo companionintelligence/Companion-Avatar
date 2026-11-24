@@ -13,9 +13,15 @@ import type { FaceRig } from '../types'
  *   2. Otherwise fold down to the VRM standard set. Lossy but portable.
  *
  * Folding is many-to-one (`mouthSmile*` and `mouthStretch*` both land on `ee`), so
- * a frame's contributions are accumulated by max and flushed on commit rather than
- * written as they arrive — otherwise the last ARKit key processed would win and
+ * the weights that share a target are combined by max and flushed on commit rather
+ * than written as they arrive — otherwise the last ARKit key processed would win and
  * the mouth would flicker between the shapes that share a target.
+ *
+ * The compositor writes a key when its value changes, not on every frame, so a weight
+ * that holds steady is written once and then left standing. This rig therefore keeps
+ * the last weight of every input and rebuilds all of its targets from them on each
+ * commit. An input stops counting when the compositor writes it back to zero, which it
+ * always does in the end: through the release ramp, or through reset().
  */
 
 type VrmStandard = 'aa' | 'ee' | 'ih' | 'oh' | 'ou' | 'blink' | 'lookUp' | 'lookDown' | 'lookLeft' | 'lookRight'
@@ -58,12 +64,28 @@ export interface VrmExpressionManagerLike {
   update?(): void
 }
 
+/** Where a canonical key lands on this head: the expression it drives, and the scale on the way. */
+interface Route {
+  readonly target: string
+  readonly scale: number
+}
+
+/** What one input key is holding right now. Only inputs above zero are kept. */
+interface Standing {
+  readonly target: string
+  weight: number
+}
+
 export class VrmExpressionFaceRig implements FaceRig {
   private readonly manager: VrmExpressionManagerLike
   private readonly available: Set<string>
-  /** Accumulated folded weights for this frame, flushed on commit(). */
-  private readonly pending = new Map<string, number>()
-  /** Standard targets that had a value last commit, so they can be cleared. */
+  /** Routes for the keys this head can show, so the per-frame has() checks allocate nothing. */
+  private readonly routes = new Map<string, Route>()
+  /** The weight each input key was last given, scaled for its target. See the header for why it is kept. */
+  private readonly standing = new Map<string, Standing>()
+  /** commit()'s working set: the weight each expression gets this frame. */
+  private readonly targets = new Map<string, number>()
+  /** Expressions the last commit set above zero, so they can be cleared once their last input lets go. */
   private readonly live = new Set<string>()
 
   constructor(manager: VrmExpressionManagerLike) {
@@ -77,53 +99,74 @@ export class VrmExpressionFaceRig implements FaceRig {
   }
 
   has(key: string): boolean {
-    if (key.startsWith(VISEME_KEY_PREFIX)) {
-      const id = key.slice(VISEME_KEY_PREFIX.length)
-      const folded = OCULUS_TO_VRM[id]
-      return this.available.has(id) || (folded !== undefined && this.available.has(folded))
-    }
-    if (this.available.has(key)) return true
-    const mapped = ARKIT_TO_VRM[key]
-    return mapped !== undefined && this.available.has(mapped[0])
+    return this.route(key) !== undefined
   }
 
   write(key: string, value: number): void {
-    if (key.startsWith(VISEME_KEY_PREFIX)) {
-      const id = key.slice(VISEME_KEY_PREFIX.length)
-      // A VRM exporting Oculus names outright takes the exact shape.
-      if (this.available.has(id)) return this.accumulate(id, value)
-      const folded = OCULUS_TO_VRM[id]
-      if (folded && this.available.has(folded)) this.accumulate(folded, value)
+    const route = this.route(key)
+    if (!route) return
+
+    // A NaN falls through to the release branch: nothing should hold a weight it cannot state.
+    const weight = Math.min(1, Math.max(0, value * route.scale))
+    if (!(weight > 0)) {
+      this.standing.delete(key)
       return
     }
-
-    // Full-fidelity path: the head speaks ARKit natively.
-    if (this.available.has(key)) return this.accumulate(key, value)
-
-    const mapped = ARKIT_TO_VRM[key]
-    if (mapped && this.available.has(mapped[0])) this.accumulate(mapped[0], value * mapped[1])
+    const held = this.standing.get(key)
+    if (held) held.weight = weight
+    else this.standing.set(key, { target: route.target, weight })
   }
 
   commit(): void {
-    // Clear targets that were live last frame and got nothing this frame, so a
-    // folded expression cannot stick after its ARKit sources went quiet.
+    // Rebuild every expression from the inputs still standing. Several inputs can land on one
+    // expression; the strongest shows, whichever of them was written last.
+    const targets = this.targets
+    targets.clear()
+    for (const { target, weight } of this.standing.values()) {
+      const current = targets.get(target)
+      if (current === undefined || weight > current) targets.set(target, weight)
+    }
+
+    // An expression whose last input let go falls back to zero, so a folded shape cannot stick.
     for (const name of this.live) {
-      if (!this.pending.has(name)) this.safeSet(name, 0)
+      if (!targets.has(name)) this.safeSet(name, 0)
     }
     this.live.clear()
 
-    for (const [name, value] of this.pending) {
+    // Every standing weight is set on every commit, not only the ones that just changed: something else
+    // can zero an expression behind this rig (core's resetVisemeState zeroes aa/ee/ih/oh/ou when a
+    // barge-in lands), and the compositor will not resend a weight it has already sent.
+    for (const [name, value] of targets) {
       this.safeSet(name, value)
-      if (value > 0) this.live.add(name)
+      this.live.add(name)
     }
-    this.pending.clear()
 
     this.manager.update?.()
   }
 
-  private accumulate(name: string, value: number): void {
-    const previous = this.pending.get(name)
-    if (previous === undefined || value > previous) this.pending.set(name, Math.min(1, Math.max(0, value)))
+  /** Which expression a canonical key drives on this head, or undefined when the head has nothing for it. */
+  private route(key: string): Route | undefined {
+    const known = this.routes.get(key)
+    if (known) return known
+    const route = this.findRoute(key)
+    if (route) this.routes.set(key, route)
+    return route
+  }
+
+  private findRoute(key: string): Route | undefined {
+    if (key.startsWith(VISEME_KEY_PREFIX)) {
+      const id = key.slice(VISEME_KEY_PREFIX.length)
+      // A VRM exporting Oculus names outright takes the exact shape.
+      if (this.available.has(id)) return { target: id, scale: 1 }
+      const folded = OCULUS_TO_VRM[id]
+      return folded && this.available.has(folded) ? { target: folded, scale: 1 } : undefined
+    }
+
+    // Full-fidelity path: the head speaks ARKit natively.
+    if (this.available.has(key)) return { target: key, scale: 1 }
+
+    const mapped = ARKIT_TO_VRM[key]
+    return mapped && this.available.has(mapped[0]) ? { target: mapped[0], scale: mapped[1] } : undefined
   }
 
   private safeSet(name: string, value: number): void {

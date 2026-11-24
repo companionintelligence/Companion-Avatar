@@ -452,7 +452,8 @@ const AvatarModelComponent = ({
     setActiveFacialRig(facial)
     // A new head means new channels: clear the compositor's write cache so the
     // first frame on the new rig is a full write, not a diff against the old one.
-    compositorRef.current.reset()
+    // Handing it the rig also makes this the rig a later reset() closes.
+    compositorRef.current.reset(rig)
     setActiveFaceCompositor(compositorRef.current)
     if (import.meta.env?.DEV) {
       console.debug(
