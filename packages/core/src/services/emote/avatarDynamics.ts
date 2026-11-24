@@ -8,6 +8,8 @@
  */
 
 import type { AudioLipSyncState } from '../visemes/audioLipSync'
+import { defaultEmoteConfig, type EmoteConfig } from './configs/emoteConfig'
+import { SPEECH_RAMP_MS, speechNodOffset, type SpeechNodOffset } from './modules/speechNods'
 
 export type ConversationState = 'loading' | 'idle' | 'listening' | 'thinking' | 'speaking'
 
@@ -34,6 +36,12 @@ export interface DynamicsOutput {
   }
 }
 
+export interface AvatarDynamicsOptions {
+  speech?: {
+    nods?: Partial<EmoteConfig['speech']['nods']>
+  }
+}
+
 // Natural motion limits. These are intentionally conservative so cursor tracking
 // reads as attention instead of a camera rig dragging the whole face around.
 const BLINK_MIN_INTERVAL = 5
@@ -45,6 +53,9 @@ const SACCADE_STRENGTH = 0.18
 const MAX_NECK_YAW = 0.45
 const MAX_NECK_PITCH = 0.25
 const HEAD_DAMPING = 0.12
+// Speech ends only after this much silence. audioState.isSpeaking drops between words, so a shorter
+// gap would restart the head motion's ease-in on every word.
+const SPEECH_END_HOLD_MS = 400
 
 const lerp = (previous: number, target: number, alpha: number) => previous + (target - previous) * alpha
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value))
@@ -67,7 +78,13 @@ export class AvatarDynamicsEngine {
   private smoothedBrowOuter = 0
   private smoothedCheek = 0
 
-  constructor() {
+  private readonly speechNods: EmoteConfig['speech']['nods']
+  private speechSinceMs: number | null = null
+  private speechUntilMs: number | null = null
+  private silentSinceMs: number | null = null
+
+  constructor(options: AvatarDynamicsOptions = {}) {
+    this.speechNods = { ...defaultEmoteConfig.speech.nods, ...options.speech?.nods }
     this.scheduleNextBlink(0)
     this.scheduleNextSaccade(0)
   }
@@ -97,6 +114,36 @@ export class AvatarDynamicsEngine {
     this.targetSaccade = { x: nextX, y: nextY }
   }
 
+  // Tracks the speech window that the head motion eases in and out of.
+  private trackSpeech(isSpeaking: boolean, nowMs: number) {
+    if (isSpeaking) {
+      this.silentSinceMs = null
+      if (this.speechSinceMs === null) {
+        this.speechSinceMs = nowMs
+      } else if (this.speechUntilMs !== null) {
+        // Back inside the ease-out: carry on with the same window. Only a finished ease-out starts a new one.
+        if (nowMs - this.speechUntilMs >= SPEECH_RAMP_MS) this.speechSinceMs = nowMs
+        this.speechUntilMs = null
+      }
+      return
+    }
+    if (this.speechSinceMs === null || this.speechUntilMs !== null) return
+    if (this.silentSinceMs === null) this.silentSinceMs = nowMs
+    if (nowMs - this.silentSinceMs >= SPEECH_END_HOLD_MS) this.speechUntilMs = nowMs
+  }
+
+  // No phrase ends reach the engine yet (its input carries only audio levels and the conversation
+  // state), so this is sway only. speechNodOffset accepts phrase ends for when they do.
+  private speechHeadOffset(nowMs: number): SpeechNodOffset {
+    if (!this.speechNods.enabled) return { pitchRad: 0, yawRad: 0 }
+    return speechNodOffset({
+      tMs: nowMs,
+      speakingSinceMs: this.speechSinceMs,
+      speakingUntilMs: this.speechUntilMs,
+      amplitudeDeg: this.speechNods.amplitudeDeg
+    })
+  }
+
   update(input: DynamicsUpdateParams): DynamicsOutput {
     const {
       elapsedTime,
@@ -116,6 +163,7 @@ export class AvatarDynamicsEngine {
     // handoff without relying on a particular avatar's facial rig.
     if (this.wasSpeaking && !isSpeaking) this.forceBlink(elapsedTime)
     this.wasSpeaking = isSpeaking
+    this.trackSpeech(isSpeaking, elapsedTime * 1000)
 
     if (isThinking && !this.isBlinking && this.nextBlinkTime - elapsedTime > 2) {
       this.nextBlinkTime = elapsedTime + randomRange(0.2, 0.8)
@@ -255,6 +303,12 @@ export class AvatarDynamicsEngine {
     getRotation('Spine2').y += this.currentHeadRotation.y * 0.2
     getRotation('Spine2').x += this.currentHeadRotation.x * 0.2
 
+    // Plain additive offset on the Head channel. It stays out of currentHeadRotation so the damping
+    // does not smooth it.
+    const speechHead = this.speechHeadOffset(elapsedTime * 1000)
+    getRotation('Head').x += speechHead.pitchRad
+    getRotation('Head').y += speechHead.yawRad
+
     const targetTilt = isListening ? -0.03 : 0
     this.smoothedSceneRotZ = lerp(this.smoothedSceneRotZ, targetTilt, 0.08)
     getRotation('Head').z += this.smoothedSceneRotZ
@@ -274,6 +328,9 @@ export class AvatarDynamicsEngine {
   reset() {
     this.isBlinking = false
     this.wasSpeaking = false
+    this.speechSinceMs = null
+    this.speechUntilMs = null
+    this.silentSinceMs = null
     this.breathPhase = 0
     this.smoothedSceneRotZ = 0
     this.currentHeadRotation = { x: 0, y: 0, z: 0 }

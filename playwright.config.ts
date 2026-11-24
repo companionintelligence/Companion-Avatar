@@ -13,7 +13,9 @@ export default defineConfig({
   // (SwiftShader flags) and the offline `script` provider, both provided by
   // playwright.config.capture.ts. Keep them out of this legacy config, which targets
   // 5173 + Ollama for the agent/audio/animation suites.
-  testIgnore: ['**/render-matrix.spec.ts', '**/scenarios/**'],
+  // The harness state captures need the production harness build, which
+  // playwright.config.harness.ts serves, so they stay out of this config too.
+  testIgnore: ['**/render-matrix.spec.ts', '**/scenarios/**', '**/harness-states.spec.ts'],
 
   // Maximum time one test can run for
   timeout: 60 * 1000,

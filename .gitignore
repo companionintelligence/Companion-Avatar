@@ -20,3 +20,6 @@ apps/*/public/config.json
 
 # Playwright visual-matrix artifacts: regenerated on every capture run.
 docs/visual-tests/shots/*-verified.png
+
+# Harness state captures (tests/harness-states.spec.ts): regenerated on every run.
+docs/visual-tests/states/

@@ -102,7 +102,7 @@ export function visemesSequence(
 /**
  * Update viseme targets based on current time and sequence
  */
-export function visemesUpdate(volume: VisemeState, _delta: number, config: VisemeConfig = defaultVisemeConfig): void {
+export function visemesUpdate(volume: VisemeState, delta: number, config: VisemeConfig = defaultVisemeConfig): void {
   const startTime = performance.now()
 
   if (!volume || !volume.sequence) {
@@ -123,21 +123,37 @@ export function visemesUpdate(volume: VisemeState, _delta: number, config: Visem
   // Neither declares an index signature, hence the widening through `unknown`.
   const targets = volume.targets as unknown as Record<string, number>
 
-  // Apply dampening
+  // Apply dampening per second of elapsed time, so 60 Hz keeps 0.95 per frame at any frame rate.
+  const decay = Math.pow(config.intensity.dampeningFactor, delta * 60)
   Object.entries(targets).forEach(([key, value]) => {
-    targets[key] = value > 0.01 ? value * config.intensity.dampeningFactor : 0
+    targets[key] = value > 0.01 ? value * decay : 0
   })
 
-  // Process active visemes
-  const activeVisemes = volume.sequence.filter((item) => item.ts[0] <= startTime && item.ts[1] >= startTime)
+  // Process active visemes. The window runs from the attack start ts[0] to the release end ts[2].
+  const activeVisemes = volume.sequence.filter((item) => item.ts[0] <= startTime && item.ts[2] >= startTime)
+
+  // Several visemes can land on one key in the same frame: VRM mode folds Oculus visemes onto five keys,
+  // and overlapping items share a key in GLB mode too. Keep the strongest instead of letting the last one win.
+  const writtenThisFrame = new Set<string>()
 
   for (const item of activeVisemes) {
     const begins = item.ts[0]
-    const ends = item.ts[1]
+    const ends = item.ts[2]
 
     if (config.timing.minDuration > 0) {
       const visemeDuration = ends - begins
       if (visemeDuration < config.timing.minDuration) continue
+    }
+
+    // A window shorter than attack + release would make the two ramps overlap, and the peak would
+    // never reach the viseme value. Then each ramp takes at most half the window. Longer windows
+    // keep the configured ramps.
+    const span = ends - begins
+    let attackTime = config.timing.attackTime
+    let releaseTime = config.timing.releaseTime
+    if (attackTime + releaseTime > span) {
+      attackTime = Math.min(attackTime, span / 2)
+      releaseTime = Math.min(releaseTime, span / 2)
     }
 
     Object.entries(item.vs).forEach(([key, valueArray]) => {
@@ -155,13 +171,14 @@ export function visemesUpdate(volume: VisemeState, _delta: number, config: Visem
       value *= config.intensity.baseMultiplier
 
       // Apply curves
-      if (startTime - begins < config.timing.attackTime) {
-        const attackProgress = (startTime - begins) / config.timing.attackTime
+      if (startTime - begins < attackTime) {
+        const attackProgress = (startTime - begins) / attackTime
         value *= applyCurve(attackProgress, config.curves.attackCurve)
       }
 
-      if (ends - startTime < config.timing.releaseTime) {
-        const releaseProgress = (config.timing.releaseTime - (ends - startTime)) / config.timing.releaseTime
+      if (ends - startTime < releaseTime) {
+        // Fades from 1 to 0 as the release end approaches.
+        const releaseProgress = (ends - startTime) / releaseTime
         value *= applyCurve(releaseProgress, config.curves.releaseCurve)
       }
 
@@ -171,7 +188,9 @@ export function visemesUpdate(volume: VisemeState, _delta: number, config: Visem
 
       const mappedKey = volume.isVRMMode ? OCULUS_TO_VRM_MAPPING[key as keyof typeof OCULUS_TO_VRM_MAPPING] : key
       if (mappedKey && mappedKey in targets) {
-        targets[mappedKey] = value
+        const sharesKeyThisFrame = writtenThisFrame.has(mappedKey)
+        targets[mappedKey] = sharesKeyThisFrame ? Math.max(targets[mappedKey], value) : value
+        writtenThisFrame.add(mappedKey)
       }
     })
   }
@@ -227,10 +246,11 @@ export function visemesToRig(volume: VisemeState, _delta: number, amplify: numbe
 
   // Handle GLB morph target avatars (original system)
   const targets = volume.targets as unknown as Record<string, number>
-  Object.entries(targets).forEach(([key, value]) => {
-    if (amplify !== 1.0) {
-      value = targets[key] = value * amplify
-    }
+  Object.entries(targets).forEach(([key, stored]) => {
+    // Amplify into a local value and clamp it to 0..1 for the morph. Writing it back into targets
+    // would compound the amplify on every call. At amplify 1 the stored value goes through unchanged,
+    // so an overdrive above 1 reaches the morph.
+    const value = amplify !== 1.0 ? Math.min(1, Math.max(0, stored * amplify)) : stored
 
     if (value === dirty[key]) return
     dirty[key] = value
@@ -341,6 +361,8 @@ export function setupVisemeStateForVRM(state: VisemeState, vrm: VRM): void {
     } else {
       // This VRM supports full visemes - keep GLB mode
       state.isVRMMode = false
+      // Drop the 5-key VRM target shape a previous avatar may have left behind.
+      state.targets = createEmptyVisemeTarget()
       console.log('VRM detected: Using 14-viseme mode (full Oculus set)')
     }
 
@@ -348,6 +370,7 @@ export function setupVisemeStateForVRM(state: VisemeState, vrm: VRM): void {
   } catch {
     console.warn('Could not detect VRM expression capabilities, defaulting to GLB mode')
     state.isVRMMode = false
+    state.targets = createEmptyVisemeTarget()
   }
 }
 /**

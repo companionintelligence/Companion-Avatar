@@ -39,6 +39,14 @@ export interface EmoteConfig {
   }
   // Mood configuration
   mood: MoodOptions
+
+  // Head motion while speaking: a soft nod at each phrase end and a slow sway
+  speech: {
+    nods: {
+      enabled: boolean
+      amplitudeDeg: number
+    }
+  }
   
 }
 
@@ -101,6 +109,12 @@ export const defaultEmoteConfig: EmoteConfig = {
       deltaRate: 1.0,
       deltaPitch: 1.0,
       deltaVolume: 1.0
+    }
+  },
+  speech: {
+    nods: {
+      enabled: true,
+      amplitudeDeg: 2 // degrees; the nod peaks here and the sway is 0.3 times it
     }
   }
 }

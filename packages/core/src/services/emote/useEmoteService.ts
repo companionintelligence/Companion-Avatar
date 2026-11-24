@@ -18,6 +18,26 @@ import {
 import type { EmoteResult, EmoteState, EmotionType, PerformanceData } from './emoteTypes'
 import { initiateGaze } from './modules/gazeService'
 
+// Each section can be given partially. Plain objects merge key by key at every depth, so an
+// unspecified key survives: gaze.maxDistance when only gaze.options is given, or gaze.options.delay
+// when only randomness is given. Arrays and other values are replaced whole.
+type EmoteConfigUpdate = { [K in keyof EmoteConfig]?: Partial<EmoteConfig[K]> }
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype
+
+const mergeDeep = (base: unknown, update: unknown): unknown => {
+  if (!isPlainObject(base) || !isPlainObject(update)) return update
+  const next: Record<string, unknown> = { ...base }
+  for (const key of Object.keys(update)) {
+    next[key] = mergeDeep(base[key], update[key])
+  }
+  return next
+}
+
+const mergeEmoteConfig = (prev: EmoteConfig, update: EmoteConfigUpdate): EmoteConfig =>
+  mergeDeep(prev, update) as EmoteConfig
+
 export const useEmoteService = (initialConfig?: Partial<EmoteConfig>) => {
   const emoteStateRef = useRef<EmoteState>(initializeEmoteState())
   const [config, setConfig] = useState<EmoteConfig>({
@@ -35,7 +55,7 @@ export const useEmoteService = (initialConfig?: Partial<EmoteConfig>) => {
 
   const triggerGaze = useCallback((): void => {
     initiateGaze(emoteStateRef.current, config.gaze.options)
-  }, [])
+  }, [config])
 
   const update = useCallback((_delta: number) => {
     emoteUpdate(emoteStateRef.current, _delta , config)
@@ -45,8 +65,8 @@ export const useEmoteService = (initialConfig?: Partial<EmoteConfig>) => {
     resetEmoteState(emoteStateRef.current)
   }, [])
 
-  const updateConfig = useCallback((newConfig: Partial<EmoteConfig>) => {
-    setConfig((prev) => ({ ...prev, ...newConfig }))
+  const updateConfig = useCallback((newConfig: EmoteConfigUpdate) => {
+    setConfig((prev) => mergeEmoteConfig(prev, newConfig))
   }, [])
 
   const onBargeIn = useCallback(() => {
@@ -91,7 +111,7 @@ export const useEmoteService = (initialConfig?: Partial<EmoteConfig>) => {
       emote: emoteStateRef.current,
       config: config
     })
-  , [emoteStateRef.current])
+  , [config])
 
   const actions = useMemo(
     () => ({

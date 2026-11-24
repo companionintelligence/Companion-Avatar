@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as THREE from 'three'
 
 import { ANIMATION_CLIPS, GLB_CLIPS, VRMA_CLIPS } from './config/animationClips'
@@ -322,5 +322,150 @@ describe('getPersonalityAnimationClips — catalog-aware', () => {
     expect(glbClips.every((c) => glbNames.has(c.name))).toBe(true)
     // …and none is a VRMA-only clip name absent from the GLB catalog.
     expect(glbClips.some((c) => vrmaNames.has(c.name) && !glbNames.has(c.name))).toBe(false)
+  })
+})
+
+// M18: blended plays used crossFadeTo(..., warp = true). Warp rewrites timeScale when it
+// ends, so the configured clip speed was lost. The weight ramp must stay, warp must go.
+describe('playClip — blended crossfade (M18)', () => {
+  it('passes warp = false to crossFadeTo', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+
+    startPerformance(
+      h.state,
+      { clip: ANIMATION_CLIPS.surprise_greet, speed: 1.25, immediate: true, blendTime: 300 },
+      0
+    )
+
+    expect(h.actions.idle_loop.crossFadeTo).toHaveBeenCalledWith(h.actions.surprise_greet, 0.3, false)
+    expect(h.actions.surprise_greet.timeScale).toBe(1.25)
+  })
+})
+
+// M19: an avatar switch re-runs setupAnimationState on fresh actions. The queue and the
+// current clip belong to the previous avatar and must not survive the swap.
+describe('setupAnimationState — avatar switch drops the previous avatar state (M19)', () => {
+  const freshMixer = () => ({ update: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('drops a queued performance so it cannot drain onto the new avatar', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    startPerformance(h.state, { clip: ANIMATION_CLIPS.surprise_greet, blendTime: 300 }, 0)
+    expect(getCurrentAnimationInfo(h.state).queueLength).toBe(1)
+
+    const nextActions = { idle_loop: fakeAction(), surprise_greet: fakeAction() }
+    setupAnimationState(h.state, nextActions as never, freshMixer() as never)
+    expect(getCurrentAnimationInfo(h.state).queueLength).toBe(0)
+
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    updateAnimation(h.state, 0.016)
+    expect(h.state.currentClip?.name).toBe('idle_loop')
+    expect(nextActions.surprise_greet.play).not.toHaveBeenCalled()
+  })
+
+  it('clears the current clip and any in-flight transition from the previous avatar', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    startPerformance(h.state, { clip: ANIMATION_CLIPS.surprise_greet, immediate: true, blendTime: 300 }, 0)
+    expect(h.state.isTransitioning).toBe(true)
+
+    setupAnimationState(h.state, { idle_loop: fakeAction() } as never, freshMixer() as never)
+
+    expect(h.state.currentClip).toBeNull()
+    expect(h.state.isTransitioning).toBe(false)
+    expect(h.state.previousClipName).toBeUndefined()
+  })
+})
+
+// T3: a re-setup must stop the clip it replaces. Otherwise a looping clip keeps its weight on the
+// mixer beside the idle that the setup then plays.
+describe('setupAnimationState — re-setup stops the replaced clip (T3)', () => {
+  const looping = { ...ANIMATION_CLIPS.surprise_greet, loopCount: Infinity }
+
+  it('stops the looping clip when a different action set is set up on the same mixer', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    startPerformance(h.state, { clip: looping, immediate: true, blendTime: 300 }, 0)
+    expect(h.actions.surprise_greet.isRunning()).toBe(true)
+
+    const nextActions = { idle_loop: fakeAction(), surprise_greet: fakeAction() }
+    setupAnimationState(h.state, nextActions as never, h.mixer as never)
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+
+    expect(h.actions.surprise_greet.stop).toHaveBeenCalled()
+    expect(h.actions.surprise_greet.isRunning()).toBe(false)
+    expect(nextActions.idle_loop.isRunning()).toBe(true)
+  })
+
+  it('stops the looping clip when the same actions are set up again on the same mixer', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    startPerformance(h.state, { clip: looping, immediate: true, blendTime: 300 }, 0)
+
+    setupAnimationState(h.state, h.actions as never, h.mixer as never)
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+
+    expect(h.actions.surprise_greet.stop).toHaveBeenCalled()
+    expect(h.actions.surprise_greet.isRunning()).toBe(false)
+    expect(h.actions.idle_loop.isRunning()).toBe(true)
+  })
+})
+
+// T4: a same-avatar setup (animations switched back on) keeps the queue. Only a new mixer or a
+// new action set starts from an empty queue.
+describe('setupAnimationState — same-avatar re-setup keeps playback (T4)', () => {
+  it('keeps a queued gesture when the same actions are set up again on the same mixer', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    startPerformance(h.state, { clip: ANIMATION_CLIPS.surprise_greet, blendTime: 300 }, 0)
+    expect(getCurrentAnimationInfo(h.state).queueLength).toBe(1)
+
+    // A rebuilt map of the same action instances, as AvatarModel builds on each effect run.
+    setupAnimationState(h.state, { ...h.actions } as never, h.mixer as never)
+    expect(getCurrentAnimationInfo(h.state).queueLength).toBe(1)
+
+    // The queued gesture still plays once the idle base is running.
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    updateAnimation(h.state, 0.016)
+    expect(h.state.currentClip?.name).toBe('surprise_greet')
+    expect(getCurrentAnimationInfo(h.state).queueLength).toBe(0)
+  })
+
+  it('drops the queue when the action set changes on the same mixer', () => {
+    const h = makeHarness(['idle_loop', 'surprise_greet'])
+    initializeDefaultAnimation(h.state, 'professional', ANIMATION_CLIPS.idle_loop)
+    startPerformance(h.state, { clip: ANIMATION_CLIPS.surprise_greet, blendTime: 300 }, 0)
+
+    setupAnimationState(h.state, { idle_loop: fakeAction(), surprise_greet: fakeAction() } as never, h.mixer as never)
+    expect(getCurrentAnimationInfo(h.state).queueLength).toBe(0)
+  })
+})
+
+// L12: on an empty personality/catalog intersection pickNextClip returned undefined and
+// advanceToNext passed it to playClip, which read clip.blendTime inside the frame loop.
+describe('cycling — empty personality/catalog intersection (L12)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('does not throw from the frame loop when no catalog clip fits the personality', () => {
+    // 'calm' cycles idle + expression. This catalog only has a gesture, so nothing fits.
+    const catalog = { surprise_greet: ANIMATION_CLIPS.surprise_greet }
+    const h = makeHarness(['idle_loop', 'surprise_greet'], catalog)
+    applyPersonality(h.state, 'calm')
+    h.state.cyclingState.cyclingEnabled = true
+    h.state.cyclingState.cycleInterval = 1000
+    initializeDefaultAnimation(h.state, 'calm', ANIMATION_CLIPS.idle_loop)
+
+    vi.spyOn(performance, 'now').mockReturnValue(h.state.lastChangeTime + 2000)
+    expect(() => updateAnimation(h.state, 0.016)).not.toThrow()
+
+    // Nothing to cycle to, so the idle keeps playing.
+    expect(h.state.currentClip?.name).toBe('idle_loop')
   })
 })

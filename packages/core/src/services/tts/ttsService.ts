@@ -144,7 +144,11 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
     return workerRef.current
   }, [])
 
-  const playAudioBuffer = useCallback(async (audioBuffer: ArrayBuffer, speechText?: string): Promise<void> => {
+  // `generation` is the barge-in generation this audio belongs to (processQueue passes its own).
+  // A stop can land while we await resume() or decodeAudioData(). Nothing is playing yet at that
+  // point, so stopSpeaking has nothing to cut off; starting the stale buffer anyway would overlap
+  // the next utterance and clobber the active-source refs (C1). Re-check after each await.
+  const playAudioBuffer = useCallback(async (audioBuffer: ArrayBuffer, speechText?: string, generation = generationRef.current): Promise<void> => {
     const graph = getAudioGraph()
     if (!graph) return
 
@@ -158,11 +162,13 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       } catch {
         // Retried on the next utterance.
       }
+      if (generationRef.current !== generation) return
     }
 
     // Bytes are in hand and decodable — everything after this is scheduling.
     markLatency('tts-first-byte')
     const decodedAudio = await audioContext.decodeAudioData(audioBuffer.slice(0))
+    if (generationRef.current !== generation) return
 
     return new Promise<void>((resolve) => {
       const source = audioContext.createBufferSource()
@@ -579,7 +585,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
               speechSynthesis.speak(utterance)
             })
           } else if (nextMessage.audio && nextMessage.audio.byteLength > 0) {
-            await playAudioBuffer(nextMessage.audio, nextMessage.text)
+            await playAudioBuffer(nextMessage.audio, nextMessage.text, myGeneration)
           }
         } catch (playbackError) {
           console.error(`Error playing message ${nextMessage.id}:`, playbackError)

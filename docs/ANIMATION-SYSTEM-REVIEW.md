@@ -18,6 +18,48 @@ severity partially uncertain._
 > a backlog requiring re-verification; do not copy their old line numbers into a
 > current release report.
 
+## Status at PR #220 (2026-11-23)
+
+Every finding was re-checked against the code at the head of PR #220 (`fix/animation-defects`) and against
+`origin/main` at 8684a92. The check read the code and the tests, not the commit messages: older commits,
+tests and code comments number these findings differently (the "C1/H4" in cc813dc is C1 and H2 here).
+Three findings are listed twice in this document: H1 = H7, H4 = H9 and H10 = H11.
+
+H1 and H7 are fixed. The gaze reads each rig's forward axis from where its eyes sit relative to its head
+(`services/emote/modules/faceFrame.ts`) instead of taking local -z, which only a VRM 0.x avatar looks along. The vision
+cone, the neck aim, the eye aim and the neutral gaze target use it, so the Ready Player Me, Mixamo and VRM 1.0 avatars,
+which face +z, turn their neck and eyes to a camera in front of them. A rig with no eyes to read keeps the maths it had.
+The bone-name mismatch had been fixed earlier (2673e25, aec1750).
+
+| Status | Count | Findings |
+|---|---:|---|
+| Fixed before PR #220 | 25 | C1, C2, H2, H3, H4, H5, H6, H8, H9, H10, H11, H12, M2, M6, M7, M10, M17, M20, M21, M23, M28, L6, L10, L13, L14 |
+| Fixed by PR #220 | 21 | H1, H7, M3, M5, M8, M9, M11, M13, M14, M15, M18, M19, M22, M24, M25, M26, L2, L5, L7, L8, L12 |
+| Partly fixed | 7 | M4, M27, M29, L1, L3, L4, L11 |
+| Open | 6 | M1, M12, M16, L9, L15, L16 |
+
+The review predates commit 671a9e1 (2026-08-26), which made the FaceCompositor the only writer of the face.
+Since then the frame loop no longer calls `visemesToRig` or the emote `applyTo*` functions, so several
+findings (L1, L3, L4, L6, and the VRM half of M12 and M24) describe code that only the exported APIs reach.
+
+What is left:
+
+| Finding | Status | What remains |
+|---|---|---|
+| M1 | Open | The capture window in `e2e/capture/gen-webp.mjs` can still cross the loop seam when a screenshot takes longer than about 110 ms. |
+| M4 | Partly fixed | Whole-word matching fixed "await", "listening" and "nonstop". "Bus stop", "fair enough", "cancel my order" and "listen to music" still trigger a barge-in. |
+| M12 | Open | Emotion relaxation still decays from the first frame, with no hold. The ARKit morphs show it; the VRM preset half no longer reaches the face. |
+| M16 | Open | Every avatar mount loads both animation catalogs (6 VRMA and 41 GLB clips). |
+| M27 | Partly fixed | The gaze path no longer allocates (it made 11 to 39 objects per frame). `safeExecute`, `translateEmoteTargets` and the viseme loops still do. |
+| M29 | Partly fixed | Gaze and facial-tick tests exist. Real-app motion assertions are still missing: the three embodiment scenarios are `test.skip` and `window.__agentDebug` does not exist. |
+| L1 | Partly fixed | `resetVisemeState` (run on barge-in) and the exported `applyToRig` still apply a merged morph dictionary to every mesh. The shipped speech path writes each mesh separately. |
+| L3 | Partly fixed | The stale five-key targets after a VRM are reset. `visemesToRig` still maps a 14-viseme VRM to the five VRM mouth names; the shipped loop does not use that path. |
+| L4 | Partly fixed | The amplified value no longer compounds. At amplify 1, `applyToRig` can still write a value above 1; the compositor clamps it, so the app does not show it. |
+| L9 | Open | The gallery's full GLB list leaves out `standing-idle-watch`. |
+| L11 | Partly fixed | The VRMA preloads are gone. `useGLTF.preload(AVATAR_MODEL)` still never hits the cache, because the real load uses a different loader class. |
+| L15 | Open | `gallery-md.mjs` leaves a stale sub-page when a page's clips all fail. The committed gallery shows it: 31 clips in the manifest, 98 images on disk. |
+| L16 | Open | `captureEyes` leaks a browser context when a capture fails. |
+
 ## CRITICAL (2)
 
 ### C1. Barge-in during TTS playback corrupts nextExpectedId, permanently silencing all subsequent speech until another barge-in

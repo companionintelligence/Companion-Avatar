@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { defaultEmoteConfig } from './configs/emoteConfig'
-import { initializeEmoteState } from './emoteService'
+import { applyEmotion, initializeEmoteState } from './emoteService'
 import { updateBlinking } from './modules/blinkingService'
 import { updateFacialTicks } from './modules/facialTicksService'
 import type { EmoteState } from './emoteTypes'
@@ -58,6 +58,8 @@ describe('updateBlinking — deterministic blink cycle', () => {
     updateBlinking(s, 0.016, defaultEmoteConfig)
     expect(s.targets.eyeBlinkLeft).toBeGreaterThan(0.9)
     expect(s.targets.eyeBlinkRight).toBeGreaterThan(0.9)
+    // The blink drives the two lids only; eyesClosed belongs to emotion baselines (L6).
+    expect(s.targets.eyesClosed ?? 0).toBe(0)
   })
 
   it('ends the blink and resets the eyelids after the cycle duration', () => {
@@ -73,7 +75,27 @@ describe('updateBlinking — deterministic blink cycle', () => {
     expect(s.blinkState.isBlinking).toBe(false)
     expect(s.targets.eyeBlinkLeft).toBe(0)
     expect(s.targets.eyeBlinkRight).toBe(0)
-    expect(s.targets.eyesClosed).toBe(0)
+    expect(s.targets.eyesClosed ?? 0).toBe(0)
+  })
+
+  it('stacks the blink on a sleep baseline instead of snapping the lids open or shut (M13)', () => {
+    const s = freshState()
+    applyEmotion(s, 'sleep') // eyeBlinkLeft/Right 1, eyesClosed 0.6
+    s.blinkState.nextBlinkTime = 1000
+
+    // Blink start: the sine is 0 here, which must not open lids that sleep holds closed.
+    setNow(1000)
+    updateBlinking(s, 0.016, defaultEmoteConfig)
+    expect(s.blinkState.isBlinking).toBe(true)
+    expect(s.targets.eyeBlinkLeft).toBe(1)
+
+    // Blink end: the lids return to the sleep baseline, not to zero.
+    setNow(1000 + defaultEmoteConfig.blink.cycleDuration + 1)
+    updateBlinking(s, 0.016, defaultEmoteConfig)
+    expect(s.blinkState.isBlinking).toBe(false)
+    expect(s.targets.eyeBlinkLeft).toBe(1)
+    expect(s.targets.eyeBlinkRight).toBe(1)
+    expect(s.targets.eyesClosed).toBe(0.6)
   })
 
   it('bails out safely when there is no targets object', () => {

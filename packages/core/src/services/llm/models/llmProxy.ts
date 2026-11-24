@@ -13,8 +13,7 @@
 
 import { readLatestInterrupt } from '../llmInterrupt'
 import type { LLMParams, LLMResult } from '../llmTypes'
-
-const MIN_BREATH_LENGTH = 20
+import { createBreathSplitter } from './breathSplit'
 
 export async function llmProxy(params: LLMParams): Promise<LLMResult> {
   const {
@@ -37,14 +36,36 @@ export async function llmProxy(params: LLMParams): Promise<LLMResult> {
   const rcounter = 1000
   let fragmentCounter = 0
   let fullResponse = ''
-  let breath = ''
+  const splitter = createBreathSplitter()
+
+  const emitBreath = (breath: string) => {
+    responseCallback?.({
+      text: fullResponse,
+      breath,
+      ready: true,
+      final: false,
+      interrupt,
+      rcounter,
+      bcounter: fragmentCounter
+    })
+    fragmentCounter++
+  }
 
   const breathHelper = (fragment: string | null = null, finished = false) => {
     if (latest() > interrupt) {
       return
     }
 
-    if (!fragment || !fragment.length || finished) {
+    if (fragment) {
+      const breath = splitter.push(fragment)
+      if (breath !== null) emitBreath(breath)
+    }
+
+    if (finished) {
+      // The buffered tail is the reply's last breath, so it is spoken before the final chunk.
+      const leftover = splitter.finish()
+      if (leftover !== null) emitBreath(leftover)
+
       if (fullResponse.length && responseCallback) {
         responseCallback({
           text: fullResponse,
@@ -53,31 +74,7 @@ export async function llmProxy(params: LLMParams): Promise<LLMResult> {
           final: true,
           interrupt
         })
-        fullResponse = ''
       }
-      return
-    }
-
-    const match = fragment.match(/.*?[.,!?]/)
-    if (breath.length < MIN_BREATH_LENGTH || !match) {
-      breath += fragment
-    } else {
-      const i = match[0].length
-      breath += fragment.slice(0, i)
-
-      if (responseCallback) {
-        responseCallback({
-          text: fullResponse,
-          breath,
-          ready: true,
-          final: false,
-          interrupt,
-          rcounter,
-          bcounter: fragmentCounter
-        })
-      }
-      breath = ''
-      fragmentCounter++
     }
   }
 

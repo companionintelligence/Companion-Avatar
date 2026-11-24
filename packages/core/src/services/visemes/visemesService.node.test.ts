@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+import { defaultVisemeConfig, type VisemeConfig } from './config/visemeConfig'
 import {
   convertToVRMTarget,
   initializeVisemeState,
@@ -7,7 +8,8 @@ import {
   setupVisemeStateForMorphTargets,
   setupVisemeStateForVRM,
   visemesToRig,
-  visemesSequence
+  visemesSequence,
+  visemesUpdate
 } from './visemesService'
 import { createEmptyVisemeTarget, createEmptyVRMVisemeTarget } from './visemeTypes'
 import type { VisemeSequenceItem, WhisperData } from './visemeTypes'
@@ -223,5 +225,199 @@ describe('avatar switch VRM → GLB (regression: viseme state leak)', () => {
 
     expect(morphs[0].morphTargetInfluences[1]).toBeCloseTo(0.8) // GLB morph written
     expect((vrm as { expressionManager: { setValue: ReturnType<typeof vi.fn> } }).expressionManager.setValue).not.toHaveBeenCalled() // old VRM untouched
+  })
+})
+
+// Ramps are off unless a test sets them. Only the timing under test is overridden.
+const configWith = (timing: Partial<VisemeConfig['timing']>): VisemeConfig => ({
+  ...defaultVisemeConfig,
+  timing: { ...defaultVisemeConfig.timing, attackTime: 0, releaseTime: 0, ...timing },
+  intensity: { ...defaultVisemeConfig.intensity, baseMultiplier: 1, minThreshold: 0 },
+  curves: { attackCurve: 'linear', releaseCurve: 'linear' }
+})
+
+// GLB and VRM targets have different key types, so the new tests read them by name through one cast.
+const targetsByKey = (state: { targets: unknown }): Record<string, number> => state.targets as Record<string, number>
+
+describe('visemesUpdate active window and release (M8)', () => {
+  // One GLB viseme_aa item with window [start, peak, end], sampled at `now` ms.
+  const sampleAa = (ts: [number, number, number], now: number, config: VisemeConfig): number => {
+    const state = initializeVisemeState(false)
+    state.sequence = [{ template: { name: 'x' }, ts, vs: { viseme_aa: [null, 1, 1] } }]
+    vi.spyOn(performance, 'now').mockReturnValue(now)
+    visemesUpdate(state, 1 / 60, config)
+    return targetsByKey(state).viseme_aa
+  }
+
+  it('keeps a viseme open past its peak until the release end ts[2]', () => {
+    const config = configWith({ attackTime: 120, releaseTime: 150 })
+
+    // ts[1] = 25 is the peak. The mouth must still be open at 60 ms and fading by 100 ms.
+    const at60 = sampleAa([0, 25, 110], 60, config)
+    const at100 = sampleAa([0, 25, 110], 100, config)
+    expect(at60).toBeGreaterThan(0)
+    expect(at60).toBeGreaterThan(at100)
+  })
+
+  it('fades the release from full to zero as ts[2] approaches', () => {
+    const config = configWith({ releaseTime: 150 })
+
+    expect(sampleAa([0, 25, 300], 150, config)).toBeCloseTo(1) // release has not started yet
+    expect(sampleAa([0, 25, 300], 225, config)).toBeCloseTo(0.5) // 75 of 150 ms left
+    expect(sampleAa([0, 25, 300], 290, config)).toBeCloseTo(10 / 150)
+  })
+
+  it('reaches full value at the midpoint of an 85 ms viseme at the defaults, and is back to 0 at ts[2]', () => {
+    // At the defaults the 120 ms attack and 150 ms release cannot both fit in 85 ms. Left unscaled,
+    // the two ramps overlap and the peak falls far short of the viseme value.
+    const full = defaultVisemeConfig.intensity.baseMultiplier
+    expect(sampleAa([0, 40, 85], 42.5, defaultVisemeConfig)).toBeGreaterThanOrEqual(0.95 * full)
+    expect(sampleAa([0, 40, 85], 85, defaultVisemeConfig)).toBeCloseTo(0)
+  })
+
+  it('scales the ramps of a 200 ms viseme so its midpoint reaches full value', () => {
+    const full = defaultVisemeConfig.intensity.baseMultiplier
+    expect(sampleAa([0, 100, 200], 100, defaultVisemeConfig)).toBeCloseTo(full)
+  })
+
+  it('keeps the configured ramps for a window longer than attack plus release', () => {
+    // Characterization: the current behaviour, pinned. 280 ms is just over attack + release (270 ms),
+    // so the full 150 ms release still applies.
+    const boost = defaultVisemeConfig.intensity.baseMultiplier
+    expect(sampleAa([0, 140, 280], 60, defaultVisemeConfig)).toBeCloseTo(boost * Math.pow(60 / 120, 2)) // attack
+    expect(sampleAa([0, 140, 280], 200, defaultVisemeConfig)).toBeCloseTo(boost * Math.pow(80 / 150, 2)) // release
+    // A much longer window follows the same rule.
+    expect(sampleAa([0, 500, 1000], 950, defaultVisemeConfig)).toBeCloseTo(boost * Math.pow(50 / 150, 2))
+  })
+})
+
+describe('visemesUpdate dampening per second (L5)', () => {
+  // Release a fully open viseme_aa over `frames` steps of `delta` seconds, with nothing scheduled.
+  const releaseAfter = (frames: number, delta: number): number => {
+    const state = initializeVisemeState(false)
+    ;targetsByKey(state).viseme_aa = 1
+    for (let frame = 0; frame < frames; frame++) visemesUpdate(state, delta)
+    return targetsByKey(state).viseme_aa
+  }
+
+  it('releases the same amount over one second at 60 Hz and at 120 Hz', () => {
+    expect(releaseAfter(60, 1 / 60)).toBeCloseTo(Math.pow(0.95, 60), 3)
+    expect(releaseAfter(120, 1 / 120)).toBeCloseTo(releaseAfter(60, 1 / 60), 3)
+  })
+})
+
+describe('visemesUpdate GLB key collisions', () => {
+  it('keeps the strongest of two overlapping items on one GLB key instead of dropping to the newer one', () => {
+    const state = initializeVisemeState(false)
+    state.sequence = [
+      // Still at its peak at 200 ms.
+      { template: { name: 'a' }, ts: [0, 25, 300], vs: { viseme_aa: [null, 0.9, 0.9] } },
+      // Its attack starts at 200 ms, so its own value is still 0 there.
+      { template: { name: 'b' }, ts: [200, 225, 400], vs: { viseme_aa: [null, 0.5, 0.5] } }
+    ]
+    vi.spyOn(performance, 'now').mockReturnValue(200)
+
+    visemesUpdate(state, 1 / 60, configWith({ attackTime: 100 }))
+
+    expect(targetsByKey(state).viseme_aa).toBeCloseTo(0.9)
+  })
+})
+
+describe('visemesUpdate VRM key collisions (L2)', () => {
+  it('keeps the strongest of several visemes that land on one VRM key in a frame', () => {
+    const state = initializeVisemeState(true)
+    state.sequence = [
+      { template: { name: 'a' }, ts: [0, 100, 200], vs: { viseme_PP: [null, 0.9, 0.9] } }, // PP maps to ou
+      { template: { name: 'b' }, ts: [0, 100, 200], vs: { viseme_U: [null, 0.2, 0.2] } } // U also maps to ou, written last
+    ]
+    vi.spyOn(performance, 'now').mockReturnValue(60)
+
+    visemesUpdate(state, 1 / 60, configWith({}))
+
+    expect(targetsByKey(state).ou).toBe(0.9)
+  })
+})
+
+describe('setupVisemeStateForVRM target shape (L3)', () => {
+  const fiveMouthVrm = () =>
+    ({ expressionManager: { expressionMap: { aa: {}, ee: {}, ih: {}, oh: {}, ou: {} }, setValue: vi.fn() } }) as never
+  const oculusVrm = () =>
+    ({ expressionManager: { expressionMap: { PP: {}, FF: {}, TH: {} }, setValue: vi.fn() } }) as never
+
+  it('a 14-viseme VRM after a 5-expression VRM gets the 14-viseme target shape', () => {
+    const s = initializeVisemeState()
+    setupVisemeStateForVRM(s, fiveMouthVrm())
+    expect(s.isVRMMode).toBe(true)
+
+    setupVisemeStateForVRM(s, oculusVrm())
+
+    expect(s.isVRMMode).toBe(false)
+    expect(s.targets).toEqual(createEmptyVisemeTarget())
+  })
+
+  it('falls back to the 14-viseme target shape when the expression map cannot be read', () => {
+    const s = initializeVisemeState()
+    setupVisemeStateForVRM(s, fiveMouthVrm())
+    const unreadable = {
+      expressionManager: {
+        get expressionMap(): never {
+          throw new Error('expression map unavailable')
+        },
+        setValue: vi.fn()
+      }
+    } as never
+
+    setupVisemeStateForVRM(s, unreadable)
+
+    expect(s.isVRMMode).toBe(false)
+    expect(s.targets).toEqual(createEmptyVisemeTarget())
+  })
+})
+
+describe('visemesToRig GLB amplify (L4)', () => {
+  const glbWithAa = (aa: number) => {
+    const state = initializeVisemeState(false)
+    const morphs = [{ morphTargetInfluences: [0] }]
+    setupVisemeStateForMorphTargets(state, morphs, { viseme_aa: [0] })
+    ;targetsByKey(state).viseme_aa = aa
+    return { state, morphs }
+  }
+
+  it('clamps the amplified morph to 1 and never writes the amplified value back', () => {
+    const { state, morphs } = glbWithAa(0.9)
+
+    visemesToRig(state, 0, 1.5)
+
+    expect(targetsByKey(state).viseme_aa).toBe(0.9)
+    expect(morphs[0].morphTargetInfluences[0]).toBe(1)
+  })
+
+  it('does not compound the amplify from frame to frame', () => {
+    const { state, morphs } = glbWithAa(0.3)
+
+    for (let frame = 0; frame < 3; frame++) visemesToRig(state, 1 / 60, 1.5)
+
+    expect(targetsByKey(state).viseme_aa).toBeCloseTo(0.3)
+    expect(morphs[0].morphTargetInfluences[0]).toBeCloseTo(0.45)
+  })
+
+  it('writes a stored overdrive above 1 unchanged at amplify 1', () => {
+    const { state, morphs } = glbWithAa(1.2)
+
+    visemesToRig(state, 0, 1)
+
+    expect(morphs[0].morphTargetInfluences[0]).toBe(1.2)
+  })
+
+  it('clamps an amplified value to 0..1 and does not write the clamp back', () => {
+    const high = glbWithAa(1.2)
+    visemesToRig(high.state, 0, 0.5)
+    expect(high.morphs[0].morphTargetInfluences[0]).toBeCloseTo(0.6)
+    expect(targetsByKey(high.state).viseme_aa).toBe(1.2)
+
+    const low = glbWithAa(-0.4)
+    visemesToRig(low.state, 0, 0.5)
+    expect(low.morphs[0].morphTargetInfluences[0]).toBe(0)
+    expect(targetsByKey(low.state).viseme_aa).toBe(-0.4)
   })
 })

@@ -210,16 +210,18 @@ export function getGreetClip(catalog: Record<string, AnimationClip>): AnimationC
 /**
  * Update clip durations from the actual loaded THREE.AnimationClips (matched by name),
  * across both catalogs.
+ *
+ * Contract: `AnimationClip.duration` is the WALL-CLOCK length in ms, the file length divided
+ * by the catalog speed. playClip runs the action at timeScale = speed, so a 3 s file at speed
+ * 0.9 plays for 3333 ms. Duration-derived timing (e.g. emote relaxTime) needs that value.
  */
 export const updateAnimationDurations = (threeAnimations: THREE.AnimationClip[]): void => {
   const all = { ...VRMA_CLIPS, ...GLB_ALL_CLIPS }
   threeAnimations.forEach((threeClip) => {
     const key = Object.keys(all).find((k) => all[k].name === threeClip.name)
     if (key && threeClip.duration) {
-      // Real clip length in ms. The former `* 0.6` fudge compensated for the double-mixer-update
-      // 2x-speed bug (now fixed); with a single mixer tick the true duration is correct and
-      // keeps duration-derived timing (e.g. emote relaxTime synced to a clip) honest.
-      all[key].duration = Math.round(threeClip.duration * 1000)
+      const speed = all[key].speed || 1
+      all[key].duration = Math.round((threeClip.duration / speed) * 1000)
     }
   })
 }

@@ -13,8 +13,9 @@ import type { GLTFParser } from 'three/examples/jsm/Addons.js'
 
 import { AvatarOptions } from './AvatarOptions'
 import { AvatarState } from './avatarState'
+import { locateAvatarHead } from './headLocate'
+import { updateVrmFrameMotion } from './vrmFrameMotion'
 import { ConversationStatusState } from '../../../services/conversation/conversationStatus'
-import { Vector3 } from 'three'
 import {
   VRMA_CLIPS,
   GLB_ALL_CLIPS,
@@ -310,7 +311,8 @@ const AvatarModelComponent = ({
     }
   }, [avatarScene])
 
-  // Position camera on head
+  // Position camera on head. Keyed on the committed scene: `avatarRef.current` reads
+  // null on the first render and the object after commit, so keying on it ran this twice.
   useEffect(() => {
     if (!avatarRef.current || !viewerCamera) return
     let head: THREE.Object3D | null = null
@@ -333,29 +335,20 @@ const AvatarModelComponent = ({
     }
 
     if (head && avatarRef.current) {
-      const headWorldPos = new Vector3()
-      head.getWorldPosition(headWorldPos)
-      const avatarWorldQuat = new THREE.Quaternion()
-      avatarRef.current.getWorldQuaternion(avatarWorldQuat)
-      const avatarForward = new Vector3(0, 0, isVRM ? -1 : 1).applyQuaternion(avatarWorldQuat).normalize()
-
-      const cameraTarget = headWorldPos
-        .clone()
-        .add(new Vector3(0, -cameraTargetDrop, 0))
-        .toArray() as [number, number, number]
-
-      const cameraPos = headWorldPos.clone().add(avatarForward.multiplyScalar(cameraDistance))
-      const cameraPosition = cameraPos.toArray() as [number, number, number]
+      const { headWorldPosition, cameraTarget, cameraPosition } = locateAvatarHead(avatarRef.current, head, {
+        isVRM,
+        cameraDistance,
+        cameraTargetDrop
+      })
 
       onHeadLocated?.(cameraTarget, cameraPosition)
       // Place the voice at the head. In XR a voice from the middle of your own
       // skull breaks presence more completely than any visual flaw; on a flat
       // desktop bust it is off, because there is no room for it to be in.
-      if (spatialAudio) setVoicePosition(headWorldPos.toArray() as [number, number, number])
+      if (spatialAudio) setVoicePosition(headWorldPosition.toArray() as [number, number, number])
       else setVoicePosition(null)
-      if (isVRM) avatarRef.current.position.x += 0.2
     }
-  }, [avatarRef.current])
+  }, [avatarScene])
 
   // Load external animations from animationClips.ts
   const { actions, mixer } = useExternalAnimations(avatarRef, vrm)
@@ -836,12 +829,11 @@ const AvatarModelComponent = ({
       }
     }
 
-    // 9. VRM secondary motion. springBoneManager was already ticked; lookAt was
-    //    not, so a VRM's own eye-tracking sat inert while the rest of the rig
-    //    animated. Both are cheap and both are visible.
+    // 9. VRM secondary motion: look-at, node constraints, spring bones and material
+    //    updates. Not vrm.update(), which would also re-drive the humanoid and the
+    //    expression manager that the mixer and face compositor already drive.
     if (isVRM && vrm) {
-      vrm.springBoneManager?.update(delta)
-      vrm.lookAt?.update(delta)
+      updateVrmFrameMotion(vrm, delta)
     } else {
       // Non-VRM rigs get the same courtesy from our own solver. Last write of the
       // frame, after the mixer and after the dynamics engine's scene offsets, so
