@@ -170,6 +170,77 @@ describe('FaceCompositor — release', () => {
     c.reset(rig)
     expect(rig.values.get('jawOpen')).toBe(0)
   })
+
+  it('reset() with no rig closes the rig the compositor has been driving', () => {
+    // Barge-in reaches the compositor through resetActiveFace(), which has no rig to hand over. The
+    // compositor forgets the keys it sent either way; the rig has to be told, or it keeps them for good.
+    const c = make()
+    const rig = new RecordingRig()
+    c.begin()
+    c.set('speech', 'jawOpen', 1)
+    c.set('emotion', 'mouthSmileLeft', 0.6)
+    c.applyTo(rig, FRAME)
+
+    c.reset()
+    expect(rig.values.get('jawOpen')).toBe(0)
+    expect(rig.values.get('mouthSmileLeft')).toBe(0)
+  })
+
+  it('reset() commits the rig it closes', () => {
+    const c = make()
+    let commits = 0
+    const rig = new (class extends RecordingRig {
+      commit() {
+        commits++
+      }
+    })()
+    c.begin()
+    c.set('speech', 'jawOpen', 1)
+    c.applyTo(rig, FRAME)
+    expect(commits).toBe(1)
+
+    c.reset()
+    expect(commits).toBe(2)
+  })
+
+  it('reset() before the compositor has driven any rig is harmless', () => {
+    expect(() => make().reset()).not.toThrow()
+  })
+
+  it('reset() closes the rig it is handed, and that rig is the one a later reset() closes', () => {
+    const c = make()
+    const old = new RecordingRig()
+    const next = new RecordingRig()
+    c.begin()
+    c.set('speech', 'jawOpen', 1)
+    c.applyTo(old, FRAME)
+
+    // An avatar swap: the new head is introduced with an explicit rig.
+    c.reset(next)
+    old.writes.length = 0
+    c.begin()
+    c.set('speech', 'jawOpen', 0.5)
+    c.applyTo(next, FRAME)
+
+    c.reset()
+    expect(next.values.get('jawOpen')).toBe(0)
+    expect(old.writes).toEqual([])
+  })
+
+  it('writes everything in full on the first frame after a reset', () => {
+    const c = make()
+    const rig = new RecordingRig()
+    c.begin()
+    c.set('emotion', 'mouthSmileLeft', 0.6)
+    c.applyTo(rig, FRAME)
+
+    c.reset()
+    rig.writes.length = 0
+    c.begin()
+    c.set('emotion', 'mouthSmileLeft', 0.6)
+    c.applyTo(rig, FRAME)
+    expect(rig.writes).toEqual([['mouthSmileLeft', 0.6]])
+  })
 })
 
 describe('FaceCompositor — rig writes', () => {
