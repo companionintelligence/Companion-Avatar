@@ -2,6 +2,8 @@ import { test, expect, type Page } from '@playwright/test'
 import { AvatarOptions } from '../packages/core/src/components/scene/avatar/AvatarOptions'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
+import { assertSpeechMode, harnessUrl } from './support/harnessUrl'
+import { LONG_UTTERANCE } from './support/utterance'
 
 /**
  * Avatar Visual & Animation Matrix Test Suite
@@ -21,13 +23,14 @@ async function waitForHarness(page: Page, avatarName: string) {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
 
-  await page.goto(`/harness.html?avatar=${encodeURIComponent(avatarName)}&shot=body&bg=dark`, {
+  await page.goto(harnessUrl({ avatar: avatarName, shot: 'body', bg: 'dark' }), {
     waitUntil: 'domcontentloaded'
   })
 
   await page.waitForFunction(() => (window as unknown as { __harnessReady?: boolean }).__harnessReady === true, {
     timeout: 30_000
   })
+  await assertSpeechMode(page)
 
   await page.waitForFunction(() => (window as unknown as { __avatarLoaded?: boolean }).__avatarLoaded === true, {
     timeout: 60_000
@@ -176,11 +179,12 @@ test.describe('Avatar Visual & Animation Matrix', () => {
       })
       await page.waitForTimeout(400)
 
-      // 5. Test speech lip-sync trigger
-      await page.evaluate(() => {
+      // 5. Test speech lip-sync trigger. A long line: the first frame after an avatar starts
+      // speaking can arrive a second or two late, and a short line is over by then.
+      await page.evaluate((text) => {
         const h = (window as unknown as { __harness?: { speak(t: string): Promise<number | null> | boolean } }).__harness
-        h?.speak('Hello world')
-      })
+        h?.speak(text)
+      }, LONG_UTTERANCE)
       await waitForRenderedSpeech(page)
 
       // 6. Capture visual reference screenshot

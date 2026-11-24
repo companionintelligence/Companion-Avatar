@@ -64,9 +64,11 @@ const KEY_TO_REGION: ReadonlyMap<string, FaceRegion> = new Map(
  *
  * ARKit muscle activations cannot losslessly express an Oculus viseme, so a
  * producer that KNOWS the phonetic shape (HeadTTS returns viseme ids outright)
- * publishes it alongside the ARKit weights. Rigs that carry `viseme_*` morphs
- * prefer this exact shape; rigs that do not simply ignore it and use the ARKit
- * weights. It is an upgrade path, not a second vocabulary.
+ * publishes that identity. A rig that carries `viseme_*` morphs takes the exact shape;
+ * a rig that does not folds it down to the ARKit weights it does have (the VRM rig onto
+ * the VRM mouth set, the morph-target rig through `rigs/visemeFold.ts`). The producer
+ * publishes the identity ALONE: ARKit weights beside it would articulate the same shape
+ * twice on a head that has both. It is an upgrade path, not a second vocabulary.
  */
 export const VISEME_KEY_PREFIX = 'viseme:'
 

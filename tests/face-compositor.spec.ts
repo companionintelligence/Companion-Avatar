@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
+import { assertSpeechMode, harnessUrl } from './support/harnessUrl'
+import { LONG_UTTERANCE } from './support/utterance'
 
 /**
  * Face arbitration — the regression suite for the FaceCompositor.
@@ -60,24 +62,12 @@ const AVATAR = 'Greg'
 /** Yuki is a VRoid-style VRM: the five standard mouth shapes and no ARKit custom expressions. */
 const VRM_AVATAR = 'Yuki'
 
-/**
- * A deliberately long utterance.
- *
- * These specs run under the capture config's SwiftShader flags, where the scene
- * renders at roughly 1–5 fps. A two-second line spans only a handful of frames,
- * so observing the speech layer mid-utterance became a coin flip — the suite
- * passed by luck rather than by construction. The synthetic engine scales its
- * duration with text length, so a long line buys tens of frames to observe.
- */
-const LONG_UTTERANCE =
-  'Hello there, this is a lip sync check that runs for long enough to be observed ' +
-  'reliably even when the renderer is limping along in software mode on a build agent.'
-
 async function loadHarness(page: Page, avatar = AVATAR) {
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(`${err.name}: ${err.message}`))
-  await page.goto(`/harness.html?avatar=${avatar}&shot=face&bg=dark`, { waitUntil: 'domcontentloaded' })
+  await page.goto(harnessUrl({ avatar, shot: 'face', bg: 'dark' }), { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => window.__harnessReady === true, { timeout: 60_000 })
+  await assertSpeechMode(page)
   await page.waitForFunction(() => window.__avatarLoaded === true, { timeout: 90_000 })
   return errors
 }
@@ -167,10 +157,19 @@ test.describe('face compositor', () => {
     // Wait for the SPEECH layer to actually take over rather than for a stopwatch.
     await waitForSpeechKind(page, 'acoustic')
 
+    // The trace lists a region only when something is writing keys in it, and which
+    // regions speech writes depends on the tier: acoustic speech writes ARKit keys (the
+    // jaw and the lips), timed speech writes `viseme:` keys, which are lips. So read the
+    // mouth regions that have anything in them, and require every one to be speech's.
     const t = await trace(page)
-    const jaw = ownerOf(t, 'jaw')
-    expect(jaw?.winner, 'speech must own the jaw while speaking').toBe('speech')
-    expect(jaw?.exclusive, 'the mouth claim must be exclusive during speech').toBe(true)
+    const mouth = (['jaw', 'lips'] as const)
+      .map((region) => ownerOf(t, region))
+      .filter((owner): owner is RegionOwnership => owner !== null)
+    expect(mouth.length, 'speech must be writing the mouth while speaking').toBeGreaterThan(0)
+    for (const region of mouth) {
+      expect(region.winner, `speech must own the ${region.region} while speaking`).toBe('speech')
+      expect(region.exclusive, `the ${region.region} claim must be exclusive during speech`).toBe(true)
+    }
 
     // Brows are NOT part of the mouth claim — the avatar should still look happy.
     const brows = ownerOf(t, 'brows')

@@ -7,7 +7,7 @@ import { getAudioGraph } from './audioGraph'
 import { mark as markLatency } from '../telemetry/latency'
 
 import { cleanText } from './textUtils'
-import { createSyntheticSpeechWav } from './syntheticSpeech'
+import { createSyntheticSpeechWav, syntheticSpeechDuration, syntheticWordTimings } from './syntheticSpeech'
 import { type TTSConfig, type WhisperData, defaultTTSConfig } from './ttsConfig'
 import { apiUrl } from '../../config/apiBase'
 
@@ -228,9 +228,16 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
   // Deterministic, dependency-free audio for rendered animation tests. It uses
   // the same decoded-buffer/analyser path as remote and local TTS, unlike the
   // legacy harness shortcut that only queued synthetic viseme weights.
+  //
+  // It also reports its own word timings, like a timing-capable upstream does
+  // (see `generateTimedAudio`), so a render test exercises the preferred lip-sync
+  // tier and not only the acoustic fallback. At level zero the analyser still reads
+  // silence, so no source takes the mouth and a silent harness page is unchanged.
   const generateSyntheticAudio = useCallback(
     async (message: QueuedMessage) => {
-      message.audio = createSyntheticSpeechWav(message.text)
+      const duration = syntheticSpeechDuration(message.text)
+      message.audio = createSyntheticSpeechWav(message.text, { duration })
+      message.timings = syntheticWordTimings(message.text, duration)
     },
     []
   )
