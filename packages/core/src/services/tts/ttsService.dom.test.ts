@@ -145,6 +145,31 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('synthetic engine', () => {
+  it('reports its own word timings while it plays, and a remote one reports none', async () => {
+    const { result } = renderHook(() => useTTSService({ config: { mode: 'synthetic', volume: 1 } }))
+    await act(async () => {
+      await result.current.actions.speak('hello there my good friend')
+    })
+    await flush()
+
+    // The mocked source never ends on its own, so the utterance is still in flight.
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+    const timings = result.current.actions.getSpeechTimings()
+    expect(timings?.words).toEqual(['hello', 'there', 'my', 'good', 'friend'])
+    expect(timings?.revision).toBeGreaterThan(0)
+    const starts = timings?.wtimes ?? []
+    expect(starts.every((value, index) => index === 0 || value > starts[index - 1])).toBe(true)
+
+    const remote = renderHook(() => useTTSService({ config: { mode: 'remote' } }))
+    await act(async () => {
+      await remote.result.current.actions.speak('hello there my good friend')
+    })
+    await flush()
+    expect(remote.result.current.actions.getSpeechTimings()).toBeNull()
+  })
+})
+
 describe('TTS barge-in', () => {
   it('H4: stopSpeaking stops the audio source that is currently playing', async () => {
     const { result } = renderHook(() => useTTSService({ config: { mode: 'remote' } }))
