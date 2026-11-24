@@ -2,10 +2,13 @@ import { Bone, Euler, MathUtils, Object3D, PerspectiveCamera, Quaternion, Vector
 import type { VRM } from '@pixiv/three-vrm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { locateAvatarHead } from '../../../components/scene/avatar/headLocate'
 import { defaultEmoteConfig } from '../configs/emoteConfig'
 import { initializeEmoteState } from '../emoteService'
 import type { EmoteState } from '../emoteTypes'
 import { initiateGaze, updateGaze } from './gazeService'
+import { ASH, GREG, KENJI, WORKBOY, YUKI, buildRig, removeEyes } from './realRigFixtures'
+import type { BuiltRig, RigData } from './realRigFixtures'
 
 const FRAME = 1 / 60
 let now = 0
@@ -80,83 +83,323 @@ function rig(options: { headUnderNeck?: boolean; spineX?: number; eyes?: boolean
   return { state, root, spine2, neck, head, leftEye, rightEye, camera }
 }
 
-/**
- * The default avatar's skeleton at rest, read from 25-1-3_CI_model_male_Greg.glb: each bone's offset from
- * its parent and its x rotation in degrees. Like every shipped Ready Player Me and Mixamo rig it faces +z,
- * with its eyes 8 cm in front of the head bone, and its neck leans forward 23 degrees.
- */
-function gregRig() {
-  const root = new Object3D()
-  const chain: Array<[name: string, y: number, z: number, xDegrees: number]> = [
-    ['Hips', 1.0192, 0.01, 1.86],
-    ['Spine', 0.0985, 0, -7.88],
-    ['Spine1', 0.1305, 0, -3.69],
-    ['Spine2', 0.1218, 0, 5.41],
-    ['Neck', 0.1556, 0, 23.43],
-    ['Head', 0.1226, 0, -18.72]
-  ]
-  const bones: Record<string, Bone> = {}
-  let parent: Object3D = root
-  for (const [name, y, z, xDegrees] of chain) {
-    const bone = new Bone()
-    bone.name = name
-    bone.position.set(0, y, z)
-    bone.rotation.x = xDegrees * MathUtils.DEG2RAD
-    parent.add(bone)
-    bones[name] = bone
-    parent = bone
-  }
-  const leftEye = new Bone()
-  leftEye.name = 'LeftEye'
-  leftEye.position.set(0.0304, 0.0878, 0.0824)
-  bones.Head.add(leftEye)
-  const rightEye = new Bone()
-  rightEye.name = 'RightEye'
-  rightEye.position.set(-0.0299, 0.0878, 0.0824)
-  bones.Head.add(rightEye)
-  root.updateMatrixWorld(true)
+// ---------------------------------------------------------------------------------------------------------------
+// Real skeletons. The synthetic rigs below face -z, stand upright and keep their eyes under the head, which is
+// where the gaze was tuned. The shipped avatars face +z (or are turned to), lean their necks forward about 20
+// degrees, tilt their heads and splay their eye bones, so these tests build the rest poses read from the files
+// (realRigFixtures.ts) and check where the neck and eyes end up.
+// ---------------------------------------------------------------------------------------------------------------
 
-  const state = initializeEmoteState()
-  const camera = new PerspectiveCamera()
-  state.node = root
-  // The bone map the avatar builds: lower-case slots for the gaze chain, a capital Head for vision.
-  state.bones = { spine2: bones.Spine2, neck: bones.Neck, Head: bones.Head, leftEye, rightEye }
-  state.camera = camera
-  return { state, leftEye, rightEye, neck: bones.Neck, camera }
+const toDegrees = MathUtils.RAD2DEG
+
+/** The elevation of a direction above the horizontal, in degrees. */
+const elevationOf = (v: Vector3) => toDegrees * Math.atan2(v.y, Math.hypot(v.x, v.z))
+
+/** The signed angle about +y from +z to the horizontal part of a direction, in degrees: toward +x is positive. */
+const yawOf = (v: Vector3) => toDegrees * Math.atan2(v.x, v.z)
+
+/**
+ * Where each bone's face points in the world. Every shipped avatar faces +z in the world (a VRM 0.x avatar by
+ * the turn the app gives it), and each bone carries that as it turns. Read from the rig at rest, before the
+ * gaze has moved anything, so the checks do not lean on the code under test.
+ */
+function trackFace(rig: BuiltRig) {
+  const front = new Vector3(0, 0, 1)
+  const atRest = new Map<Object3D, Vector3>()
+  for (const bone of [rig.head, rig.neck, rig.leftEye, rig.rightEye]) {
+    atRest.set(bone, front.clone().applyQuaternion(bone.getWorldQuaternion(new Quaternion()).invert()))
+  }
+  return (bone: Object3D) => (atRest.get(bone) as Vector3).clone().applyQuaternion(bone.getWorldQuaternion(new Quaternion()))
 }
 
-describe('gazeService: a rig that faces +z (Ready Player Me, Mixamo)', () => {
-  // The eye aim reads the eye's forward as local -z, where a VRM 0.x eye looks. On a rig whose eyes sit at
-  // +z that aimed the eyes at a point behind them, and the default avatar's pupils settled about 12 degrees
-  // above the camera. The eyes stay at rest on such a rig until the aim reads the rig's own forward axis.
-  it('leaves the default avatar eyes at rest with the camera in front of its face', () => {
-    const { state, leftEye, rightEye, camera } = gregRig()
-    camera.position.set(0, 1.638, 1.0)
+/** Put the camera `distance` metres from the head bone: `azimuth` degrees from the face toward +x, `elevation` degrees above level. */
+function placeCamera(rig: BuiltRig, azimuth: number, elevation: number, distance = 1) {
+  const a = azimuth * MathUtils.DEG2RAD
+  const e = elevation * MathUtils.DEG2RAD
+  const direction = new Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e))
+  rig.camera.position.copy(rig.head.getWorldPosition(new Vector3())).addScaledVector(direction, distance)
+}
 
-    step(state, 400)
+const towardCamera = (rig: BuiltRig, from: Object3D) => rig.camera.position.clone().sub(from.getWorldPosition(new Vector3()))
 
-    expect(leftEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
-    expect(rightEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+/** Give a built rig the VRM the app would hold for it, with a look-at to watch. */
+function addVrm(rig: BuiltRig) {
+  const lookAt = vi.fn()
+  rig.state.vrm = { scene: rig.root, lookAt: { lookAt } } as unknown as VRM
+  return lookAt
+}
+
+const lastLookAt = (lookAt: ReturnType<typeof vi.fn>) => lookAt.mock.calls[lookAt.mock.calls.length - 1][0] as Vector3
+
+const midpoint = (a: Object3D, b: Object3D) =>
+  a.getWorldPosition(new Vector3()).add(b.getWorldPosition(new Vector3())).multiplyScalar(0.5)
+
+describe.each([
+  ['Greg', GREG],
+  ['Ash', ASH]
+] as Array<[string, RigData]>)('gazeService: %s, a Ready Player Me rig that faces +z', (_name, data) => {
+  // The aim read the eye's forward as local -z and aimed these eyes at a point behind them: the default
+  // avatar's pupils settled about 12 degrees above the camera, and swung to the yaw limit with the camera behind
+  // it. The vision cone read the same axis, so a camera in front of the face was "not visible" and neither the
+  // neck nor the eyes ever engaged (review findings H1 and H7).
+  it('looks at the lens of the default view, with the neck at rest', () => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    const location = locateAvatarHead(rig.root, rig.head, { isVRM: false, cameraDistance: 0.5, cameraTargetDrop: 0 })
+    rig.camera.position.set(...location.cameraPosition)
+    const rest = rig.neck.quaternion.clone()
+
+    step(rig.state, 600)
+
+    expect(rig.state.gazeState.isPlayerVisible).toBe(true)
+    expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    for (const eye of [rig.leftEye, rig.rightEye]) {
+      expect(toDegrees * faceOf(eye).angleTo(towardCamera(rig, eye))).toBeLessThan(1)
+    }
   })
 
-  it('leaves the default avatar eyes at rest with the camera off to the side and behind it', () => {
-    const { state, leftEye, rightEye, camera } = gregRig()
-    camera.position.set(2, 1.638, -1.0)
+  it.each([60, -60])('turns the neck and the eyes toward a camera %i degrees to the side, and not past it', (azimuth) => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, azimuth, 0)
+    const toCamera = yawOf(towardCamera(rig, rig.neck))
 
-    step(state, 400)
+    step(rig.state, 600)
 
-    expect(leftEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
-    expect(rightEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    // The neck turns to the camera's side, and not past it
+    const neckTurn = Math.sign(azimuth) * yawOf(faceOf(rig.neck))
+    expect(neckTurn).toBeGreaterThan(5)
+    expect(neckTurn).toBeLessThan(Math.abs(toCamera))
+    // The eyes turn to the camera's side in their sockets, up to their own yaw limit
+    for (const eye of [rig.leftEye, rig.rightEye]) {
+      const eyeTurn = Math.sign(azimuth) * (yawOf(faceOf(eye)) - yawOf(faceOf(rig.head)))
+      expect(eyeTurn).toBeGreaterThan(30)
+      expect(eyeTurn).toBeLessThan(35.5)
+    }
   })
 
-  it('leaves the neck at rest with the camera in front of its face', () => {
-    const { state, neck, camera } = gregRig()
-    camera.position.set(0, 1.638, 1.0)
-    const rest = neck.quaternion.clone()
+  it('does not lift the head or the eyes above a camera that is level with the head bone', () => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, 60, 0)
+    const cameraElevation = elevationOf(towardCamera(rig, rig.neck))
 
-    step(state, 400)
+    step(rig.state, 600)
 
-    expect(neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    // The camera is a little above the neck: the head follows it up, and stops short
+    const neckElevation = elevationOf(faceOf(rig.neck))
+    expect(neckElevation).toBeGreaterThanOrEqual(-0.5)
+    expect(neckElevation).toBeLessThanOrEqual(cameraElevation)
+    // The eyes sit above the head bone, so the camera is below them: they do not pitch up
+    for (const eye of [rig.leftEye, rig.rightEye]) {
+      expect(elevationOf(faceOf(eye)) - elevationOf(faceOf(rig.head))).toBeLessThan(0.5)
+    }
+  })
+
+  it('lifts the head and the eyes toward a camera above it', () => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, 0, 45)
+    const cameraElevation = elevationOf(towardCamera(rig, rig.neck))
+
+    step(rig.state, 600)
+
+    const neckElevation = elevationOf(faceOf(rig.neck))
+    expect(neckElevation).toBeGreaterThan(2)
+    expect(neckElevation).toBeLessThanOrEqual(cameraElevation)
+    // The eyes pitch up in their sockets as well, as far as their own limit
+    for (const eye of [rig.leftEye, rig.rightEye]) {
+      const eyePitch = elevationOf(faceOf(eye)) - elevationOf(faceOf(rig.head))
+      expect(eyePitch).toBeGreaterThan(5)
+      expect(eyePitch).toBeLessThan(25.5)
+    }
+  })
+
+  it('looks at a camera above it with its eyes alone while the camera is inside central vision', () => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, 0, 25)
+    const rest = rig.neck.quaternion.clone()
+
+    step(rig.state, 600)
+
+    expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    for (const eye of [rig.leftEye, rig.rightEye]) {
+      expect(toDegrees * faceOf(eye).angleTo(towardCamera(rig, eye))).toBeLessThan(2)
+    }
+  })
+
+  it.each([135, 180])('returns the neck to rest and the eyes to straight ahead once the camera is %i degrees behind it', (azimuth) => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    const rest = rig.neck.quaternion.clone()
+    placeCamera(rig, 60, 0)
+    step(rig.state, 600)
+    expect(rig.neck.quaternion.angleTo(rest)).toBeGreaterThan(MathUtils.DEG2RAD * 5)
+
+    placeCamera(rig, azimuth, 0)
+    step(rig.state, 600)
+
+    expect(rig.state.gazeState.isPlayerVisible).toBe(false)
+    expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    // Straight ahead of the head, level: the two eyes are about 2 degrees closer than parallel to meet a point 1 m away
+    for (const eye of [rig.leftEye, rig.rightEye]) {
+      expect(toDegrees * faceOf(eye).angleTo(faceOf(rig.head))).toBeLessThan(3)
+    }
+  })
+
+  it('classifies the camera against the whole bone chain, so a spine bent back moves the cone', () => {
+    const rig = buildRig(data)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, 0, 0)
+    step(rig.state, 5) // the rest is read while the avatar stands as it loaded
+
+    // An animation leans the avatar back 50 degrees, and the camera follows the face up
+    rig.bones[data.spine2].rotation.x -= 0.9
+    rig.root.updateMatrixWorld(true)
+    rig.camera.position.copy(rig.head.getWorldPosition(new Vector3())).addScaledVector(faceOf(rig.head).normalize(), 1)
+    step(rig.state, 5)
+
+    expect(elevationOf(faceOf(rig.head))).toBeGreaterThan(40)
+    expect(rig.state.gazeState.isPlayerVisible).toBe(true)
+    // Focused vision leaves the neck alone; peripheral vision captures and turns it.
+    expect(rig.state.gazeState.neckOptions.quaternions.default).toBeNull()
+  })
+})
+
+describe.each([
+  ['kenji, a VRM 0.x', KENJI],
+  ['yuki, a VRM 0.x with its eyes under eye-set nodes', YUKI],
+  ['Work Boy, a VRM 1.0', WORKBOY]
+] as Array<[string, RigData]>)('gazeService: %s, which faces +z in the world', (_name, data) => {
+  // A VRM 0.x avatar is turned 180 degrees about y when it loads, so its bones keep the -z axes it was authored
+  // with while it faces +z in the world. A VRM 1.0 avatar is not turned, and its bones face +z. The eyes of both
+  // are driven by the VRM's look-at, which takes the point to look at.
+  it('looks at the camera in front of it and leaves the neck at rest', () => {
+    const rig = buildRig(data)
+    const lookAt = addVrm(rig)
+    placeCamera(rig, 0, 0, 0.5)
+    const rest = rig.neck.quaternion.clone()
+
+    step(rig.state, 600)
+
+    expect(rig.state.gazeState.isPlayerVisible).toBe(true)
+    expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    expect(lastLookAt(lookAt).distanceTo(rig.camera.position)).toBeLessThan(0.01)
+  })
+
+  it.each([60, -60])('turns the neck toward a camera %i degrees to the side, and not past it', (azimuth) => {
+    const rig = buildRig(data)
+    const lookAt = addVrm(rig)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, azimuth, 0)
+    const toCamera = yawOf(towardCamera(rig, rig.neck))
+
+    step(rig.state, 600)
+
+    const neckTurn = Math.sign(azimuth) * yawOf(faceOf(rig.neck))
+    expect(neckTurn).toBeGreaterThan(5)
+    expect(neckTurn).toBeLessThan(Math.abs(toCamera))
+    expect(lastLookAt(lookAt).distanceTo(rig.camera.position)).toBeLessThan(0.01)
+  })
+
+  it('lifts the neck toward a camera above it, and not past it', () => {
+    const rig = buildRig(data)
+    addVrm(rig)
+    const faceOf = trackFace(rig)
+    placeCamera(rig, 45, 35)
+    const cameraElevation = elevationOf(towardCamera(rig, rig.neck))
+
+    step(rig.state, 600)
+
+    const neckElevation = elevationOf(faceOf(rig.neck))
+    expect(neckElevation).toBeGreaterThan(2)
+    expect(neckElevation).toBeLessThanOrEqual(cameraElevation)
+  })
+
+  it('returns the neck to rest and looks straight ahead of the face, level with the eyes, with the camera behind it', () => {
+    const rig = buildRig(data)
+    const lookAt = addVrm(rig)
+    const rest = rig.neck.quaternion.clone()
+    placeCamera(rig, 60, 0)
+    step(rig.state, 600)
+    expect(rig.neck.quaternion.angleTo(rest)).toBeGreaterThan(MathUtils.DEG2RAD * 5)
+
+    placeCamera(rig, 180, 0)
+    step(rig.state, 600)
+
+    expect(rig.state.gazeState.isPlayerVisible).toBe(false)
+    expect(rig.neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    // The point the eyes rest on is 1 m ahead of the face, along +z in the world, level with the eyes. It used to
+    // be a fixed point 1 m behind a turned VRM 0.x avatar, which the look-at met with the eyes at their yaw limit.
+    const ahead = lastLookAt(lookAt).clone().sub(midpoint(rig.leftEye, rig.rightEye))
+    expect(ahead.length()).toBeCloseTo(1, 6)
+    expect(toDegrees * ahead.angleTo(new Vector3(0, 0, 1))).toBeLessThan(0.5)
+  })
+})
+
+describe('gazeService: VRM 0.x avatars keep the neck they had (characterization)', () => {
+  // Recorded from the gaze service as it was before the face's forward axis was read from the rig (a8ed624):
+  // the mean orientation of the neck over the last two seconds of a ten second settle, with the camera at
+  // azimuth degrees from the face, elevation degrees up, and distance metres from the head. The neck chatters
+  // about the edge of the focused cone by design, so a single frame would pin the phase of the chatter.
+  const RECORDED: Array<[RigData, Array<[azimuth: number, elevation: number, distance: number, neck: [number, number, number, number]]>]> = [
+    [
+      KENJI,
+      [
+        [60, 0, 1, [0.021802, 0.134153, -0.008882, 0.990681]],
+        [-75, 20, 1, [0.043058, -0.24744, 0.018163, 0.967776]],
+        [45, -20, 0.5, [-0.026045, 0.092176, 0.007854, 0.995371]],
+        [60, 40, 2.5, [0.112423, 0.222365, -0.034351, 0.967851]],
+        [80, 10, 1, [0.052693, 0.291896, -0.022022, 0.954744]],
+        [-45, 30, 1.5, [0.030973, -0.075364, 0.010174, 0.996623]]
+      ]
+    ],
+    [
+      YUKI,
+      [
+        [60, 0, 1, [0.016434, 0.133442, -0.006756, 0.990897]],
+        [-75, 20, 1, [0.041916, -0.247994, 0.017809, 0.96769]],
+        [45, -20, 0.5, [-0.028634, 0.078701, 0.009209, 0.996444]],
+        [60, 40, 2.5, [0.112525, 0.223307, -0.034423, 0.967619]],
+        [80, 10, 1, [0.051091, 0.291982, -0.021521, 0.954816]],
+        [-45, 30, 1.5, [0.030495, -0.075384, 0.01007, 0.996637]]
+      ]
+    ]
+  ]
+
+  it.each(RECORDED.flatMap(([data, cases]) => cases.map(([azimuth, elevation, distance, neck]) => [data.source, azimuth, elevation, distance, neck, data] as const)))(
+    'settles %s to the neck it had with the camera at azimuth %i, elevation %i, distance %f',
+    (_source, azimuth, elevation, distance, recorded, data) => {
+      const rig = buildRig(data)
+      addVrm(rig)
+      placeCamera(rig, azimuth, elevation, distance)
+      const tail: Quaternion[] = []
+
+      for (let frame = 0; frame < 600; frame++) {
+        step(rig.state)
+        if (frame >= 480) tail.push(rig.neck.quaternion.clone())
+      }
+
+      const mean = new Quaternion(
+        ...[0, 1, 2, 3].map((k) => tail.reduce((sum, q) => sum + q.toArray()[k], 0) / tail.length)
+      ).normalize()
+      // The recorded values are rounded, so they are not exactly unit: normalize before measuring the angle
+      expect(toDegrees * mean.angleTo(new Quaternion(...recorded).normalize())).toBeLessThan(0.1)
+    }
+  )
+})
+
+describe('gazeService: a rig whose face cannot be read', () => {
+  it('keeps the point it rests its gaze on, 1.5 m up and 1 m along -z', () => {
+    const rig = buildRig(KENJI)
+    removeEyes(rig)
+    const lookAt = addVrm(rig)
+    rig.camera.position.set(0, -5, 0) // below the hips: never visible
+
+    step(rig.state, 10)
+
+    expect(lastLookAt(lookAt).toArray()).toEqual([0, 1.5, -1])
   })
 })
 

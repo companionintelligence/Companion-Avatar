@@ -1,8 +1,10 @@
-import { Euler, Quaternion, Vector3, MathUtils } from 'three'
+import { Quaternion, Vector3, MathUtils } from 'three'
 import type { Mesh, Object3D } from 'three'
 
 import type { EmoteState, GazeState, PlayerVisionType } from '../emoteTypes'
 import type { EmoteConfig } from '../configs/emoteConfig'
+import { faceAxes, faceFrameFor, faceFrontWorld, pitchAxisWorld, restFrame } from './faceFrame'
+import type { FaceFrame } from './faceFrame'
 
 // Type for Camera (r3f uses three.Camera)
 type CameraType = {
@@ -11,10 +13,16 @@ type CameraType = {
 
 type EyeAngles = { h: number; v: number }
 
+const UP = new Vector3(0, 1, 0)
+
+// How far ahead of the face the neutral gaze target sits, in metres.
+const NEUTRAL_DISTANCE = 1
+
 // Scratch objects for the per-frame gaze path, so it does not allocate. Nothing here is stored
 // on state: values are cloned or copied before they are kept.
 const scratchTarget = new Vector3()
 const neutralTarget = new Vector3()
+const scratchNeutralOrigin = new Vector3()
 const scratchNeckWorld = new Vector3()
 const scratchNeckWorldQuat = new Quaternion()
 const scratchToTarget = new Vector3()
@@ -22,17 +30,22 @@ const scratchNeckForward = new Vector3()
 const scratchToTargetXZ = new Vector3()
 const scratchNeckForwardXZ = new Vector3()
 const scratchCrossYaw = new Vector3()
-const scratchToTargetYZ = new Vector3()
-const scratchNeckForwardYZ = new Vector3()
+const scratchPitchAxisWorld = new Vector3()
+const scratchToTargetSagittal = new Vector3()
+const scratchNeckForwardSagittal = new Vector3()
 const scratchCrossPitch = new Vector3()
-const scratchNeckEuler = new Euler()
+const scratchFaceFront = new Vector3()
+const scratchFaceUp = new Vector3()
+const scratchFaceRight = new Vector3()
+const scratchEyePitchAxis = new Vector3()
+const scratchPitchQuat = new Quaternion()
+const scratchRestInv = new Quaternion()
 const scratchNeckOffset = new Quaternion()
 const scratchNeckGoal = new Quaternion()
 const scratchReturnQuat = new Quaternion()
 const scratchEyeTarget = new Vector3()
 const scratchEyeDir = new Vector3()
 const scratchEyeRestInv = new Quaternion()
-const scratchEyeEuler = new Euler()
 const scratchEyeOffset = new Quaternion()
 const scratchEyeGoal = new Quaternion()
 const scratchEyePos = new Vector3()
@@ -67,8 +80,11 @@ const updateGazeInternal = (state: EmoteState, delta: number , config : EmoteCon
 
   const { gazeState } = state
 
+  // Which way this rig's face looks, read from its geometry once per avatar
+  const face = faceFrameFor(state)
+
   // 1. Check visibility
-  const visibilityState = getPlayerVisionState(state, camera , config)
+  const visibilityState = getPlayerVisionState(state, camera , config, face)
   const isVisible = visibilityState !== null
 
   if (isVisible && !gazeState.isPlayerVisible) {
@@ -80,7 +96,7 @@ const updateGazeInternal = (state: EmoteState, delta: number , config : EmoteCon
   const isActiveFocus = gazeState.gazeTime.start < currentTime && gazeState.gazeTime.end > currentTime
 
   // 3. Pick gaze target
-  const target = calculateGazeTarget(state, camera, visibilityState, currentTime, isActiveFocus)
+  const target = calculateGazeTarget(state, camera, visibilityState, currentTime, isActiveFocus, face)
 
   // 4. Smooth toward the new target from the PREVIOUS smoothed target. (Previously this
   //    assigned `target` to gazeState.target first, so smoothVector lerped the target toward
@@ -92,7 +108,18 @@ const updateGazeInternal = (state: EmoteState, delta: number , config : EmoteCon
   }
 
   // 5. Apply gaze based on visibility state
-  applyGazeBehavior(state, visibilityState, delta , config)
+  applyGazeBehavior(state, visibilityState, delta , config, face)
+}
+
+// The point the eyes rest on when there is nothing to look at: straight ahead of the face, level with the
+// eyes. A rig whose face cannot be read keeps the point this was tuned on, 1.5 m up and 1 m along -z.
+const neutralGazeTarget = (state: EmoteState, face: FaceFrame, out: Vector3): Vector3 => {
+  if (face.legacy || !state.node) return out.set(0, 1.5, -1)
+
+  scratchNeutralOrigin.set(0, 0, 0)
+  for (const eye of face.eyes) scratchNeutralOrigin.add(eye.getWorldPosition(scratchEyePos))
+  scratchNeutralOrigin.divideScalar(face.eyes.length)
+  return out.copy(scratchNeutralOrigin).addScaledVector(faceFrontWorld(state, face, scratchFaceFront), NEUTRAL_DISTANCE)
 }
 
 const calculateGazeTarget = (
@@ -100,10 +127,11 @@ const calculateGazeTarget = (
   camera: CameraType,
   visibilityState: PlayerVisionType,
   currentTime: number,
-  isActiveFocus: boolean
+  isActiveFocus: boolean,
+  face: FaceFrame
 ): Vector3 => {
   if (!visibilityState) {
-    return scratchTarget.set(0, 1.5, -1) // Default forward look
+    return neutralGazeTarget(state, face, scratchTarget) // Default forward look
   }
 
   if (isActiveFocus) {
@@ -111,36 +139,49 @@ const calculateGazeTarget = (
   } else if (state.relaxationTime > currentTime) {
     return scratchTarget.copy(camera.position).multiplyScalar(0.5)
   } else {
-    return scratchTarget.set(0, 1.5, -1)
+    return neutralGazeTarget(state, face, scratchTarget)
   }
 }
 
-const applyGazeBehavior = (state: EmoteState, visibilityState: PlayerVisionType, delta: number , config: EmoteConfig): void => {
+const applyGazeBehavior = (
+  state: EmoteState,
+  visibilityState: PlayerVisionType,
+  delta: number,
+  config: EmoteConfig,
+  face: FaceFrame
+): void => {
   const target = state.gazeState.target as Vector3
   if (visibilityState) {
     switch (visibilityState) {
       case 'focused':
         // In central/paracentral vision: Eyes follow directly, neck stays neutral
-        updateEyeGaze(state, target, delta, config)
+        updateEyeGaze(state, target, delta, config, face)
         returnNeckToNeutral(state, delta , config)
         break
       case 'peripheral':
       default:
         // In peripheral vision: Lead with neck, then eyes follow
-        updateNeckGaze(state, target, delta , config)
+        updateNeckGaze(state, target, delta , config, face)
         break
     }
   } else {
     // Not visible: Return neck and eyes to neutral position
     returnNeckToNeutral(state, delta, config)
-    updateEyeGaze(state, neutralTarget.set(0, 1.5, -1), delta, config)
+    updateEyeGaze(state, neutralGazeTarget(state, face, neutralTarget), delta, config, face)
   }
 }
 
 const resetGazeToNeutral = (state: EmoteState): void => {
   // Fallback neutral gaze
   if (state.vrm?.lookAt) {
-    state.vrm.lookAt.lookAt(new Vector3(0, 1.5, -1))
+    const target = new Vector3(0, 1.5, -1)
+    try {
+      neutralGazeTarget(state, faceFrameFor(state), target)
+    } catch {
+      // The face could not be read either: look at the point the rig was tuned on
+      target.set(0, 1.5, -1)
+    }
+    state.vrm.lookAt.lookAt(target)
   }
 }
 
@@ -230,28 +271,25 @@ function neckRestFor(state: EmoteState): [number, number, number, number] | null
 const eyeRestQuaternions = new WeakMap<Object3D, Quaternion>()
 
 // Apply eye-only gaze. VRM avatars use their lookAt; other rigs drive their eye bones.
-function updateEyeGaze(state: EmoteState, target: Vector3, delta: number, config: EmoteConfig) {
+function updateEyeGaze(state: EmoteState, target: Vector3, delta: number, config: EmoteConfig, face: FaceFrame) {
   if (state.vrm) {
     // Blend between forward and target for subtlety
     state.vrm.lookAt?.lookAt(target)
     return
   }
-  if (state.bones?.leftEye) aimEyeBone(state.bones.leftEye, target, delta, config)
-  if (state.bones?.rightEye) aimEyeBone(state.bones.rightEye, target, delta, config)
+  if (state.bones?.leftEye) aimEyeBone(state.bones.leftEye, target, delta, config, state, face)
+  if (state.bones?.rightEye) aimEyeBone(state.bones.rightEye, target, delta, config, state, face)
 }
 
 // Aim one eye bone's forward axis at the target, within the eye's own yaw and pitch limits. The
 // direction is measured in the eye's parent frame, so head and neck turns are already included.
 // The aim is absolute: unlike the neck's residual aim, it does not settle at about half the angle.
 //
-// The aim reads the eye's forward as local -z, which is where a VRM 0.x eye looks. A rig that faces +z
-// (the Ready Player Me and Mixamo avatars, VRM 1.0) has its eyes in front of the head bone at +z, and
-// the same maths aims them at a point behind them: the default avatar's pupils settled about 12 degrees
-// above the camera, and swung to the yaw limit with the camera behind it. Those eyes stay at rest until
-// the aim, the vision cone and the neck read the rig's own forward axis (review finding H1).
-function aimEyeBone(eye: Object3D, target: Vector3, delta: number, config: EmoteConfig): void {
-  if (eye.position.z >= 0) return
-
+// The eye's forward is where the rig's face looks, carried into the eye's own rest frame (see
+// faceFrame.ts), so the same maths aims an eye that sits behind the head bone at -z (VRM 0.x) and one
+// in front of it at +z (Ready Player Me, Mixamo, VRM 1.0). Yaw turns the face about up, pitch about the
+// axis that raises it, and both are applied on the eye's rest orientation.
+function aimEyeBone(eye: Object3D, target: Vector3, delta: number, config: EmoteConfig, state: EmoteState, face: FaceFrame): void {
   let rest = eyeRestQuaternions.get(eye)
   if (!rest) {
     rest = eye.quaternion.clone()
@@ -265,19 +303,28 @@ function aimEyeBone(eye: Object3D, target: Vector3, delta: number, config: Emote
   scratchEyeRestInv.copy(rest).invert()
   scratchEyeDir.applyQuaternion(scratchEyeRestInv)
 
+  // Forward, up and the axis a positive yaw turns toward, in the eye's rest frame
+  faceAxes(eye, state, face, scratchFaceFront, scratchFaceUp)
+  const right = scratchFaceRight.crossVectors(scratchFaceUp, scratchFaceFront)
+  const ahead = scratchEyeDir.dot(scratchFaceFront)
+  const aside = scratchEyeDir.dot(right)
+
   clampAim(
-    Math.atan2(-scratchEyeDir.x, -scratchEyeDir.z),
-    Math.atan2(scratchEyeDir.y, Math.hypot(scratchEyeDir.x, scratchEyeDir.z)),
+    Math.atan2(aside, ahead),
+    Math.atan2(scratchEyeDir.dot(scratchFaceUp), Math.hypot(ahead, aside)),
     EYE_YAW_LIMIT,
     EYE_PITCH_LIMIT
   )
-  scratchEyeOffset.setFromEuler(scratchEyeEuler.set(aimOut.pitch, aimOut.yaw, 0, 'YXZ'))
+  // Pitch about the axis that raises the face, then yaw about up: the same order as Euler 'YXZ'
+  scratchEyeOffset
+    .setFromAxisAngle(scratchFaceUp, aimOut.yaw)
+    .multiply(scratchPitchQuat.setFromAxisAngle(scratchEyePitchAxis.crossVectors(scratchFaceFront, scratchFaceUp), aimOut.pitch))
   scratchEyeGoal.copy(rest).multiply(scratchEyeOffset)
   eye.quaternion.slerp(scratchEyeGoal, 1 - Math.exp(-delta * config.gaze.interpolationFactor))
 }
 
-// Apply neck rotation toward target (yaw and pitch: y and x axes; eyes follow)
-function updateNeckGaze(state: EmoteState, target: Vector3, delta: number , config: EmoteConfig) {
+// Apply neck rotation toward target (yaw about up, pitch about the lateral axis; eyes follow)
+function updateNeckGaze(state: EmoteState, target: Vector3, delta: number , config: EmoteConfig, face: FaceFrame) {
   const { gazeState } = state
   if (!state.bones?.neck) return
 
@@ -291,8 +338,10 @@ function updateNeckGaze(state: EmoteState, target: Vector3, delta: number , conf
   // Compute direction to target in world space
   const toTarget = scratchToTarget.subVectors(target, neckWorld).normalize()
   const neckWorldQuat = state.bones.neck.getWorldQuaternion(scratchNeckWorldQuat)
-  // Get neck's forward direction in world space
-  const neckForward = scratchNeckForward.set(0, 0, -1).applyQuaternion(neckWorldQuat).normalize()
+  // Where the face looks through the neck in world space. The rig's own forward carried into the neck's
+  // frame, so a neck that leans forward at rest still points the face level.
+  faceAxes(state.bones.neck, state, face, scratchFaceFront, scratchFaceUp)
+  const neckForward = scratchNeckForward.copy(scratchFaceFront).applyQuaternion(neckWorldQuat).normalize()
 
   // Calculate yaw (rotation around y axis)
   const toTargetXZ = scratchToTargetXZ.set(toTarget.x, 0, toTarget.z).normalize()
@@ -302,28 +351,39 @@ function updateNeckGaze(state: EmoteState, target: Vector3, delta: number , conf
   const signYaw = Math.sign(crossYaw.y) // y axis is up
   yawAngle *= signYaw
 
-  // Calculate pitch (rotation around x axis)
-  // Project toTarget and neckForward onto YZ plane (ignore X for pitch)
-  const toTargetYZ = scratchToTargetYZ.set(0, toTarget.y, toTarget.z).normalize()
-  const neckForwardYZ = scratchNeckForwardYZ.set(0, neckForward.y, neckForward.z).normalize()
-  let pitchAngle = neckForwardYZ.angleTo(toTargetYZ)
-  const crossPitch = scratchCrossPitch.crossVectors(toTargetYZ ,neckForwardYZ)
-  const signPitch = Math.sign(crossPitch.x) // x axis is right
+  // Calculate pitch (rotation about the lateral axis, the one a positive pitch raises the face about)
+  // Project toTarget and neckForward onto the plane across it (ignore the lateral part for pitch). That
+  // axis is -x for a face that looks along world +z, so a positive angle is a target above the face
+  // for a VRM 0.x avatar turned to face +z and for a Ready Player Me avatar facing +z alike.
+  const lateral = pitchAxisWorld(state, face, scratchPitchAxisWorld)
+  const toTargetSagittal = scratchToTargetSagittal.copy(toTarget).addScaledVector(lateral, -toTarget.dot(lateral)).normalize()
+  const neckForwardSagittal = scratchNeckForwardSagittal.copy(neckForward).addScaledVector(lateral, -neckForward.dot(lateral)).normalize()
+  let pitchAngle = neckForwardSagittal.angleTo(toTargetSagittal)
+  const crossPitch = scratchCrossPitch.crossVectors(neckForwardSagittal, toTargetSagittal)
+  const signPitch = Math.sign(crossPitch.dot(lateral))
   pitchAngle *= signPitch
 
   // Clamp to the neck range (yaw, then pitch decayed by yaw)
   clampAim(yawAngle, pitchAngle, config.gaze.neck.yaw, config.gaze.neck.pitch)
 
-  // Build target quaternion: yaw (y) and pitch (x), applied on top of the neck rest
+  // Build target quaternion: yaw about up and pitch about the lateral axis, in the avatar's frame, carried
+  // into the neck's own frame by the neck's rest orientation and applied on top of the neck rest. The neck
+  // of a Ready Player Me avatar leans forward about 20 degrees at rest, so its own y axis is not up.
   const defaultQuat = scratchNeckGoal.fromArray(gazeState.neckOptions.quaternions.default!)
-  scratchNeckEuler.set(aimOut.pitch, aimOut.yaw, 0, 'YXZ')
-  const constrainedQuat = defaultQuat.multiply(scratchNeckOffset.setFromEuler(scratchNeckEuler))
+  scratchNeckOffset
+    .setFromAxisAngle(UP, aimOut.yaw)
+    .multiply(scratchPitchQuat.setFromAxisAngle(face.pitchAxis, aimOut.pitch))
+  if (!face.legacy && state.node) {
+    const neckRest = restFrame(state.bones.neck, state.node)
+    scratchNeckOffset.premultiply(scratchRestInv.copy(neckRest).invert()).multiply(neckRest)
+  }
+  const constrainedQuat = defaultQuat.multiply(scratchNeckOffset)
 
   // Smoothly interpolate neck toward constrained orientation
   state.bones.neck.quaternion.slerp(constrainedQuat, 1 - Math.exp(-delta * config.gaze.interpolationFactor))
 
   // Eyes follow neck movement with slight delay for natural look
-  updateEyeGaze(state, target, delta, config)
+  updateEyeGaze(state, target, delta, config, face)
 }
 
 function returnNeckToNeutral(state: EmoteState, delta: number , config: EmoteConfig) {
@@ -358,13 +418,18 @@ function findEyeMeshes(node: Object3D) {
 }
 
 // Horizontal and vertical angles (radians) from an eye's forward axis to the camera
-function eyeAnglesToCamera(eye: Object3D, cameraPos: Vector3, out: EyeAngles): EyeAngles {
+function eyeAnglesToCamera(eye: Object3D, cameraPos: Vector3, out: EyeAngles, state: EmoteState, face: FaceFrame): EyeAngles {
   const eyePos = eye.getWorldPosition(scratchEyePos)
   // The eye's full world orientation: avatar root, spine, neck, head and eye
   const eyeWorldQuat = eye.getWorldQuaternion(scratchEyeWorldQuat)
 
-  const eyeForward = scratchEyeForward.set(0, 0, -1).applyQuaternion(eyeWorldQuat).normalize()
-  const eyeUp = scratchEyeUp.set(0, 1, 0).applyQuaternion(eyeWorldQuat).normalize()
+  // The rig's forward and up in the eye's own frame, turned by that orientation: where the face looks, and
+  // which way is up for it, as the whole chain has posed them
+  faceAxes(eye, state, face, scratchEyeForward, scratchEyeUp)
+  scratchEyeForward.applyQuaternion(eyeWorldQuat).normalize()
+  scratchEyeUp.applyQuaternion(eyeWorldQuat).normalize()
+  const eyeForward = scratchEyeForward
+  const eyeUp = scratchEyeUp
 
   const toTarget = scratchEyeToCamera.subVectors(cameraPos, eyePos).normalize()
   const eyeRight = scratchEyeRight.crossVectors(eyeForward, eyeUp).normalize()
@@ -379,7 +444,7 @@ function inVisionCone(angles: EyeAngles, hAngle: number, vAngle: number): boolea
   return Math.abs(angles.h) < hAngle * MathUtils.DEG2RAD && Math.abs(angles.v) < vAngle * MathUtils.DEG2RAD
 }
 
-function getPlayerVisionState(state: EmoteState, camera: CameraType , config: EmoteConfig): PlayerVisionType {
+function getPlayerVisionState(state: EmoteState, camera: CameraType , config: EmoteConfig, face: FaceFrame): PlayerVisionType {
   if (!state.node || !camera) return null
 
   // Parameter defaults
@@ -435,8 +500,8 @@ function getPlayerVisionState(state: EmoteState, camera: CameraType , config: Em
   }
 
   // Each eye is measured once, then checked against both cones
-  const leftAngles = eyeAnglesToCamera(leftEyeObj, cameraPos, scratchLeftAngles)
-  const rightAngles = eyeAnglesToCamera(rightEyeObj, cameraPos, scratchRightAngles)
+  const leftAngles = eyeAnglesToCamera(leftEyeObj, cameraPos, scratchLeftAngles, state, face)
+  const rightAngles = eyeAnglesToCamera(rightEyeObj, cameraPos, scratchRightAngles, state, face)
 
   // Focused (central vision)
   if (

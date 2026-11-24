@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 
+import { namedEyeNodes } from '../../../services/emote/modules/faceFrame'
+
 /** Metres a VRM 0.x avatar is pushed along +x after its head is located. */
 export const VRM0_HEAD_OFFSET_X = 0.2
 
@@ -29,9 +31,6 @@ export interface HeadLocation {
   cameraPosition: [number, number, number]
 }
 
-/** Eye bone names. Eyebrows, eyelids, lashes and look targets contain "eye" but are not eyes. */
-const EYE_BONE_NAME = /^(?!.*(brow|lid|lash|target|look)).*eye/i
-
 /**
  * Which way the face looks: from the head toward the midpoint of its eye bones, flattened onto
  * the avatar's own XZ plane, which is level for the avatar. Undefined when the head has no eye
@@ -46,10 +45,7 @@ const facingFromEyes = (
   head: THREE.Object3D,
   headWorldPosition: THREE.Vector3
 ): THREE.Vector3 | undefined => {
-  const eyes: THREE.Object3D[] = []
-  head.traverse((node) => {
-    if (node !== head && !(node as THREE.Mesh).isMesh && EYE_BONE_NAME.test(node.name)) eyes.push(node)
-  })
+  const eyes = namedEyeNodes(head)
   if (eyes.length === 0) return undefined
 
   const eyeMidpoint = new THREE.Vector3()
