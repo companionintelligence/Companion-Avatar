@@ -46,6 +46,33 @@ function fakeVrm(expressions: readonly string[]) {
 describe('barge-in closes the face the avatar mounted with', () => {
   afterEach(() => setActiveFaceCompositor(null))
 
+  it('on a VRM that is holding a smile and a vowel the compositor is not resending', () => {
+    const { vrm, weight } = fakeVrm(['aa', 'ee', 'ih', 'oh', 'ou'])
+    const { rig, kind } = createFaceRig([], vrm)
+    expect(kind).toBe('vrm-expression')
+
+    const compositor = new FaceCompositor(DEFAULT_FACE_LAYERS)
+    compositor.reset(rig) // what AvatarModel does when it binds a new head
+    setActiveFaceCompositor(compositor)
+
+    for (let i = 0; i < 10; i++) {
+      runFrame(compositor, rig, {
+        [FACE_LAYERS.SPEECH]: { 'viseme:aa': 0.8 },
+        [FACE_LAYERS.EMOTION]: { mouthSmileLeft: 0.6, mouthSmileRight: 0.6 }
+      })
+    }
+    expect(weight('aa')).toBeCloseTo(0.8)
+    expect(weight('ee')).toBeCloseTo(0.6)
+
+    resetActiveFace()
+    for (const name of ['aa', 'ee', 'ih', 'oh', 'ou']) expect(weight(name)).toBe(0)
+
+    for (let i = 0; i < 5; i++) {
+      runFrame(compositor, rig)
+      for (const name of ['aa', 'ee', 'ih', 'oh', 'ou']) expect(weight(name)).toBe(0)
+    }
+  })
+
   it('on a morph-target head that was speaking', () => {
     const mesh = {
       morphTargetDictionary: { jawOpen: 0, mouthSmileLeft: 1 },

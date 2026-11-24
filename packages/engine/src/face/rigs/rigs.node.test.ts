@@ -119,14 +119,17 @@ describe('VrmExpressionFaceRig', () => {
     expect(setValue).not.toHaveBeenCalledWith('aa', expect.anything())
   })
 
-  it('clears a folded expression once its ARKit sources go quiet', () => {
+  it('clears a folded expression once its ARKit source is written back to zero', () => {
+    // The compositor says so explicitly when a key goes quiet; a frame that writes nothing is not that
+    // signal (see vrmHeldWeights.node.test.ts, which holds the weight across such frames).
     const { manager, setValue } = vrm(['aa'])
     const rig = new VrmExpressionFaceRig(manager)
     rig.write('jawOpen', 1)
     rig.commit()
     setValue.mockClear()
 
-    rig.commit() // a frame where nothing wrote the mouth
+    rig.write('jawOpen', 0)
+    rig.commit()
     expect(setValue).toHaveBeenCalledWith('aa', 0)
   })
 
