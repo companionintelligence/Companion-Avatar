@@ -243,7 +243,15 @@ function updateEyeGaze(state: EmoteState, target: Vector3, delta: number, config
 // Aim one eye bone's forward axis at the target, within the eye's own yaw and pitch limits. The
 // direction is measured in the eye's parent frame, so head and neck turns are already included.
 // The aim is absolute: unlike the neck's residual aim, it does not settle at about half the angle.
+//
+// The aim reads the eye's forward as local -z, which is where a VRM 0.x eye looks. A rig that faces +z
+// (the Ready Player Me and Mixamo avatars, VRM 1.0) has its eyes in front of the head bone at +z, and
+// the same maths aims them at a point behind them: the default avatar's pupils settled about 12 degrees
+// above the camera, and swung to the yaw limit with the camera behind it. Those eyes stay at rest until
+// the aim, the vision cone and the neck read the rig's own forward axis (review finding H1).
 function aimEyeBone(eye: Object3D, target: Vector3, delta: number, config: EmoteConfig): void {
+  if (eye.position.z >= 0) return
+
   let rest = eyeRestQuaternions.get(eye)
   if (!rest) {
     rest = eye.quaternion.clone()

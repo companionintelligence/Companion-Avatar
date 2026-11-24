@@ -80,6 +80,86 @@ function rig(options: { headUnderNeck?: boolean; spineX?: number; eyes?: boolean
   return { state, root, spine2, neck, head, leftEye, rightEye, camera }
 }
 
+/**
+ * The default avatar's skeleton at rest, read from 25-1-3_CI_model_male_Greg.glb: each bone's offset from
+ * its parent and its x rotation in degrees. Like every shipped Ready Player Me and Mixamo rig it faces +z,
+ * with its eyes 8 cm in front of the head bone, and its neck leans forward 23 degrees.
+ */
+function gregRig() {
+  const root = new Object3D()
+  const chain: Array<[name: string, y: number, z: number, xDegrees: number]> = [
+    ['Hips', 1.0192, 0.01, 1.86],
+    ['Spine', 0.0985, 0, -7.88],
+    ['Spine1', 0.1305, 0, -3.69],
+    ['Spine2', 0.1218, 0, 5.41],
+    ['Neck', 0.1556, 0, 23.43],
+    ['Head', 0.1226, 0, -18.72]
+  ]
+  const bones: Record<string, Bone> = {}
+  let parent: Object3D = root
+  for (const [name, y, z, xDegrees] of chain) {
+    const bone = new Bone()
+    bone.name = name
+    bone.position.set(0, y, z)
+    bone.rotation.x = xDegrees * MathUtils.DEG2RAD
+    parent.add(bone)
+    bones[name] = bone
+    parent = bone
+  }
+  const leftEye = new Bone()
+  leftEye.name = 'LeftEye'
+  leftEye.position.set(0.0304, 0.0878, 0.0824)
+  bones.Head.add(leftEye)
+  const rightEye = new Bone()
+  rightEye.name = 'RightEye'
+  rightEye.position.set(-0.0299, 0.0878, 0.0824)
+  bones.Head.add(rightEye)
+  root.updateMatrixWorld(true)
+
+  const state = initializeEmoteState()
+  const camera = new PerspectiveCamera()
+  state.node = root
+  // The bone map the avatar builds: lower-case slots for the gaze chain, a capital Head for vision.
+  state.bones = { spine2: bones.Spine2, neck: bones.Neck, Head: bones.Head, leftEye, rightEye }
+  state.camera = camera
+  return { state, leftEye, rightEye, neck: bones.Neck, camera }
+}
+
+describe('gazeService: a rig that faces +z (Ready Player Me, Mixamo)', () => {
+  // The eye aim reads the eye's forward as local -z, where a VRM 0.x eye looks. On a rig whose eyes sit at
+  // +z that aimed the eyes at a point behind them, and the default avatar's pupils settled about 12 degrees
+  // above the camera. The eyes stay at rest on such a rig until the aim reads the rig's own forward axis.
+  it('leaves the default avatar eyes at rest with the camera in front of its face', () => {
+    const { state, leftEye, rightEye, camera } = gregRig()
+    camera.position.set(0, 1.638, 1.0)
+
+    step(state, 400)
+
+    expect(leftEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    expect(rightEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+  })
+
+  it('leaves the default avatar eyes at rest with the camera off to the side and behind it', () => {
+    const { state, leftEye, rightEye, camera } = gregRig()
+    camera.position.set(2, 1.638, -1.0)
+
+    step(state, 400)
+
+    expect(leftEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+    expect(rightEye.quaternion.angleTo(new Quaternion())).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+  })
+
+  it('leaves the neck at rest with the camera in front of its face', () => {
+    const { state, neck, camera } = gregRig()
+    camera.position.set(0, 1.638, 1.0)
+    const rest = neck.quaternion.clone()
+
+    step(state, 400)
+
+    expect(neck.quaternion.angleTo(rest)).toBeLessThan(MathUtils.DEG2RAD * 0.5)
+  })
+})
+
 describe('gazeService: GLB eye bones (H1)', () => {
   it('turns the eye bones toward a camera inside the focused cone', () => {
     const { state, leftEye, camera } = rig({ eyes: true })
