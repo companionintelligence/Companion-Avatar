@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Avatar Companion
+Comment=Embodied AI companion with a 3D avatar, voice and chat
+Exec=avatar-companion
+Icon=${SNAP}/meta/gui/icon.png
+Terminal=false
+Categories=Utility;
+StartupWMClass=avatar-companion-desktop

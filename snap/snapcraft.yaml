@@ -1,0 +1,78 @@
+name: avatar-companion
+title: Avatar Companion
+base: core24
+# Keep in step with apps/desktop/src-tauri/tauri.conf.json: scripts/snap-config.test.mjs fails when they differ.
+version: '0.2.0'
+summary: Embodied AI companion with a 3D avatar, voice and chat
+description: |
+  Avatar Companion is a 3D avatar you talk to. It starts in demo mode, with a scripted avatar, and
+  connects to the language model server you choose in Settings: an Ollama server, or the Avatar
+  Companion proxy in front of one.
+
+  This snap is the desktop app (a Tauri 2 shell around the web app), built from source at
+  https://github.com/companionintelligence/Companion-Avatar. The microphone is off until you allow
+  it: connect it with `snap connect avatar-companion:audio-record` if the app cannot hear you.
+license: PolyForm-Noncommercial-1.0.0
+website: https://avatar.ci.computer
+source-code: https://github.com/companionintelligence/Companion-Avatar
+issues: https://github.com/companionintelligence/Companion-Avatar/issues
+contact: support@companionintelligence.com
+icon: snap/gui/icon.png
+
+# `devel` can be released to edge and beta only. Raise it to `stable` when the first build has been
+# tried on a real desktop (docs/PUBLISHING.md).
+grade: devel
+confinement: strict
+
+platforms:
+  amd64:
+
+layout:
+  # WebKitGTK looks for its helper processes under /usr/lib; the snap carries them under $SNAP.
+  /usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/webkit2gtk-4.1:
+    bind: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/webkit2gtk-4.1
+
+apps:
+  avatar-companion:
+    command: usr/bin/avatar-companion-desktop
+    extensions: [gnome]
+    plugs:
+      - network
+      - audio-playback
+      - audio-record
+      - opengl
+
+parts:
+  avatar-companion:
+    plugin: nil
+    source: .
+    build-snaps:
+      - node/22/stable
+      - rustup/latest/stable
+    build-packages:
+      - build-essential
+      - curl
+      - dpkg
+      - file
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+      - libssl-dev
+      - libwebkit2gtk-4.1-dev
+      - libxdo-dev
+    stage-packages:
+      - libayatana-appindicator3-1
+      - libwebkit2gtk-4.1-0
+    override-build: |
+      set -eux
+      rustup default stable
+      # The node snap's global folder is read-only, so pnpm runs through npx, at the version
+      # package.json pins (scripts/snap-config.test.mjs keeps the two in step).
+      pnpm() { npx --yes pnpm@10.28.2 "$@"; }
+      pnpm install --frozen-lockfile
+      pnpm --filter @ci-avatar/web build
+      cd apps/desktop
+      pnpm run notices
+      # The web app is already built above, so the Tauri build skips its own beforeBuildCommand,
+      # as native-release.yml does.
+      pnpm exec tauri build --ci --bundles deb --config '{"build":{"beforeBuildCommand":""}}'
+      dpkg -x src-tauri/target/release/bundle/deb/*.deb "$CRAFT_PART_INSTALL"

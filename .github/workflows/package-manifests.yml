@@ -1,0 +1,74 @@
+name: Package manifests
+
+# Renders the Homebrew cask, the Scoop manifest and the winget manifests for one release from that
+# release's SHA256SUMS.txt, and attaches them to the run for a person to review. It publishes
+# nothing: the files are copied by hand into companionintelligence/homebrew-tap,
+# companionintelligence/scoop-bucket and a pull request to microsoft/winget-pkgs
+# (docs/PUBLISHING.md). Manual dispatch only, like every workflow in this repo (docs/CI.md):
+#
+#   gh workflow run package-manifests.yml --repo companionintelligence/Companion-Avatar \
+#     --ref main -f tag=v0.2.0
+#
+# The cask is marked NOT PUBLISHABLE unless macos_notarized is set. Set it only for a release whose
+# macOS app was Developer ID signed and notarized, which native-release.yml does not do yet.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to render manifests for, e.g. v0.2.0. The release must exist.
+        required: true
+        type: string
+      macos_notarized:
+        description: The macOS app in this release is notarized
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  # Inputs reach scripts through the environment, never by interpolation into a script.
+  TAG: ${{ inputs.tag }}
+  NOTARIZED: ${{ inputs.macos_notarized }}
+
+jobs:
+  render:
+    name: Render the manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download the release checksums
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir release
+          cat release/SHA256SUMS.txt
+
+      - name: Render the manifests
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "$NOTARIZED" = true ]; then flags+=(--macos-notarized); fi
+          released="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json publishedAt --jq '.publishedAt[:10]')"
+          node scripts/package-manifests.mjs --tag "$TAG" --sums release/SHA256SUMS.txt \
+            --out manifests --released "$released" ${flags[@]+"${flags[@]}"}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-manifests-${{ inputs.tag }}
+          path: manifests
+          if-no-files-found: error
+          retention-days: 14
