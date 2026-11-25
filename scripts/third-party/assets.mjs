@@ -1,6 +1,6 @@
-// Every file the desktop and Android apps carry from assets/avatars, assets/animations and
-// assets/props, with its author, source and licence. scripts/pack-assets.mjs copies those three
-// folders into the web build, so every app build carries all of them.
+// Every file the desktop and Android apps carry from assets/avatars, assets/animations,
+// assets/props and assets/environments, with its author, source and licence. scripts/pack-assets.mjs
+// copies those folders into the web build, so every app build carries all of them.
 //
 // scripts/third-party-notices.mjs renders this list into THIRD-PARTY-NOTICES.txt, and
 // scripts/third-party-notices.test.mjs fails when a file under those folders is not listed here
@@ -19,7 +19,7 @@ export const ASSET_DECISION =
   'extract or reuse these files outside the app without your own permission from their authors.'
 
 /** The folders under assets/ that the apps bundle. */
-export const ASSET_FOLDERS = ['avatars', 'animations', 'props']
+export const ASSET_FOLDERS = ['avatars', 'animations', 'props', 'environments']
 
 const CC_BY = { license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/' }
 
@@ -235,6 +235,25 @@ export const ASSET_GROUPS = [
           '"Commodore PET" (CC BY 4.0), https://sketchfab.com/3d-models/commodore-pet-fb1e5a04ef4644f98219e1d5d52ab073.'
       }
     ]
+  },
+  {
+    title: 'Studio lighting (HDRI)',
+    author: 'Greg Zaal (Poly Haven)',
+    source:
+      'Poly Haven, "Studio Small 03", https://polyhaven.com/a/studio_small_03. The file is the 1k Radiance HDR ' +
+      'that pmndrs/drei-assets hosts for drei\'s studio preset: hdri/studio_small_03_1k.hdr at commit ' +
+      '456060a26bbeb8fdf79326f224b6d99b8bcce736 (1,680,234 bytes, git blob 3565559df49fe13dece328c2118710f6770bc162)',
+    license: 'CC0 1.0 Universal (public domain dedication)',
+    licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/',
+    credit:
+      'Studio Small 03 by Greg Zaal, from Poly Haven (https://polyhaven.com). CC0 asks for no credit; it is ' +
+      'given because it is due.',
+    notes: [
+      'Poly Haven licenses all of its assets as CC0 (https://polyhaven.com/license), and its API names Greg Zaal as the only author of this one (https://api.polyhaven.com/info/studio_small_03, read 2026-11-24).',
+      'CC0 lets anyone reuse this file for any purpose. The owner\'s decision above is not what lets the apps ship it, and the request not to reuse the files outside the app does not apply to it.',
+      'The scene lights itself with it. The apps used to fetch it from raw.githack.com every time the scene started; they now carry it.'
+    ],
+    files: ['environments/studio_small_03_1k.hdr']
   }
 ]
 

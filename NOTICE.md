@@ -145,6 +145,20 @@ authors were found by matching those names on Sketchfab on 2026-11-14.
 The props depict historical, trademarked hardware; the names belong to their
 owners.
 
+### Studio lighting
+
+The scene is lit by one image, `assets/environments/studio_small_03_1k.hdr`:
+"Studio Small 03" by Greg Zaal, from
+[Poly Haven](https://polyhaven.com/a/studio_small_03), under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (Poly Haven
+licenses all of its assets that way,
+[polyhaven.com/license](https://polyhaven.com/license)). It is the 1k Radiance
+HDR that [pmndrs/drei-assets](https://github.com/pmndrs/drei-assets) hosts for
+drei's studio preset (commit `456060a2`, 1,680,234 bytes), unchanged. CC0 asks
+for no credit; it is given because it is due. The distribution decision above
+is not what lets the apps ship it, and it does not restrict it: anyone may
+reuse this file.
+
 ## First-party code
 
 Except as noted above, the contents of this repository are

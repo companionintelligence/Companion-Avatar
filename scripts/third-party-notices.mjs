@@ -8,8 +8,9 @@
  *            of @ci-avatar/web and of the workspace packages it links (@ci-avatar/core,
  *            @ci-avatar/engine), as pnpm-lock.yaml resolves them. Vite tree-shakes some of
  *            them out of the bundle; listing one too many is the safe side.
- *   assets   every file under assets/avatars, assets/animations and assets/props, from the
- *            catalogue in scripts/third-party/assets.mjs (author, source, licence).
+ *   assets   every file under assets/avatars, assets/animations, assets/props and
+ *            assets/environments, from the catalogue in scripts/third-party/assets.mjs
+ *            (author, source, licence).
  *   desktop  Rust crates linked into the Tauri app: `cargo metadata --locked` on
  *            apps/desktop/src-tauri (so Cargo.lock), for every desktop release target, following
  *            normal dependencies. Build scripts and proc macros run only at compile time and are
@@ -766,7 +767,7 @@ function appVersion() {
 }
 
 const PART_TITLES = {
-  assets: 'Avatars, animations and props',
+  assets: 'Avatars, animations, props and studio lighting',
   web: 'npm packages in the web app (every app)',
   desktop: 'Rust crates in the desktop app',
   android: 'Android libraries'

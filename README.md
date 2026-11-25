@@ -164,8 +164,9 @@ first. `SHA256SUMS.txt` comes with every release.
 - text chat with the built-in demo responder: scripted answers, not a language model (the session says Demo-only);
 - spoken replies with the system voice, where the app's WebView offers speech synthesis.
 
-They do need an internet connection when they start: the scene loads its studio lighting from a public CDN
-(raw.githack.com). No API key, server address or analytics ID is built into them.
+They start with no connection: the scene's studio lighting is a file that ships with each app, not something
+fetched from a CDN (and if that file ever fails to load, the scene is lit by generated lighting of about the same
+brightness instead of going blank). No API key, server address or analytics ID is built into them.
 
 **With a server**: open Settings, pick **Proxy** and enter your BFF's chat URL (`https://<host>/api/chat`), or
 **Ollama** and your Ollama server's address, then press **Check connection**. The check goes to the server you
