@@ -84,9 +84,15 @@ Store preparation (Play listing, data safety, upload key and Play App Signing) i
 
 ## iOS
 
-The iOS project builds in Xcode on the owner's Mac; it is not part of the release workflow. Signing,
-App Store Connect and review are in `STORE-PREP-IOS.md`. The iOS app's origin is
-`capacitor://localhost`, which the BFF does not allow by default: add it to `APP_ALLOWED_ORIGINS`.
+The iOS project builds in Xcode on a Mac; it is not part of the release workflow. The commands for the
+simulator and for a paired iPhone are in the root README ([iOS](../../README.md#ios)), and
+`scripts/ios-archive.sh` makes the App Store archive. Signing, App Store Connect and review are in
+`STORE-PREP-IOS.md`; where each build ships is in [docs/PUBLISHING.md](../../docs/PUBLISHING.md).
+
+The iOS app's origin is `capacitor://localhost`, which the BFF does not allow by default: add it to
+`APP_ALLOWED_ORIGINS`. Without it **Check connection** fails with "Load failed"
+([docs/DEVICE-QA.md](../../docs/DEVICE-QA.md)). Reaching a server from the simulator or a phone also needs HTTPS: see
+[Test with a backend](../../README.md#test-with-a-backend).
 
 ## Tests
 
