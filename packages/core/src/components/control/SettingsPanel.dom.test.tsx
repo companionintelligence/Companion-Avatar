@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { SettingsPanel } from './SettingsPanel'
+import { AvatarState } from '../scene/avatar/avatarState'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -122,6 +123,21 @@ describe('SettingsPanel layout', () => {
     // The address fields also ask for the URL keyboard, with its slash and dot keys.
     expect(screen.getByLabelText('Proxy URL')).toHaveAttribute('inputmode', 'url')
     expect(screen.getByLabelText('Custom avatar URL')).toHaveAttribute('inputmode', 'url')
+  })
+
+  it('offers the Green Orb in the Character list, and choosing it selects the orb', async () => {
+    const before = AvatarState.get().selectedModel
+    try {
+      render(<SettingsPanel isOpen onClose={vi.fn()} />)
+      const character = screen.getByLabelText('Character') as HTMLSelectElement
+      expect([...character.options].map((option) => option.value)).toContain('Green Orb')
+
+      await userEvent.selectOptions(character, 'Green Orb')
+      expect(AvatarState.get().selectedModel).toBe('orb:green')
+      expect(character.value).toBe('Green Orb')
+    } finally {
+      act(() => AvatarState.set((state) => ({ ...state, selectedModel: before })))
+    }
   })
 })
 

@@ -129,6 +129,38 @@ which reaches `mouthOpen` through the rig's legacy alias, and the timed tiers' `
 folded onto the same jaw (`packages/engine/src/face/rigs/visemeFold.ts`), so the jaw follows the
 words rather than the loudness. No path writes `mouthSmile`, so emotes do not smile on these heads.
 
+## Drawn avatars: the Green Orb
+
+Not every avatar is a model file. **Green Orb** is a floating ball of light in CI phthalo, drawn in code
+(`packages/core/src/components/scene/avatar/orb/`). It is in the Settings **Character** list like any model, and its
+source is the token `orb:green` rather than a URL. `ORB_AVATAR_OPTIONS` holds the drawn avatars apart from
+`AvatarOptions`, because `scripts/pack-assets.mjs` checks every `AvatarOptions` entry against a file, and the render
+matrices load each one as a model.
+
+![The Green Orb at rest, listening and thinking (top), and speaking (bottom)](media/orb/green-orb-states.png)
+
+It has no face, so it shows the conversation with light. It reads the same signals as a model's face: the voice's
+analyser (TTS, or a live talk reply) and `ConversationStatusState`.
+
+| State | What the orb does |
+|---|---|
+| idle | floats about a centimetre up and down and breathes slowly |
+| listening | the filaments brighten and it breathes faster |
+| thinking | the filaments race and the motes spin |
+| speaking | swells and glows with the voice; syllable onsets send rings out, at most one every 0.4 s |
+| touched | flashes, and sends one ring |
+
+`OrbMotion` (`orbMotion.ts`) turns those signals into a look and is unit-tested in node; `OrbAvatar` draws it with
+four shaders (`orbShaders.ts`): the ball (a ray through a sphere, with ridged-noise filaments reaching out from a hot
+core), a halo, the rings, and the motes. All four use premultiplied blending, so the light adds to a dark backdrop and
+the ball still reads on a light one. With `prefers-reduced-motion` it neither floats nor rings, and its glow still
+follows the voice.
+
+The look follows the orb in [danieloquelis/Unity-QuestConversationalAI](https://github.com/danieloquelis/Unity-QuestConversationalAI).
+None of its files are used: that orb is built from a third-party particle pack, and this one is our own code.
+
+![The Green Orb in the app](media/orb/green-orb-app.png)
+
 ## The HumGen → VRM pipeline
 
 New parametric avatars are generated headlessly in Blender (`pipeline/`) and exported as

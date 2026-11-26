@@ -8,7 +8,7 @@
  * AvatarModel, so what it captures is exactly what ships.
  *
  * Served as a separate Vite entry at /harness.html. Query params:
- *   ?avatar=Greg   initial avatar (AvatarOptions key)
+ *   ?avatar=Greg   initial avatar (AvatarOptions or ORB_AVATAR_OPTIONS key)
  *   ?shot=body|upper|face   camera framing (default body)
  *   ?bg=transparent|dark    background (default dark)
  *   ?tts=synthetic|browser  speech engine (default synthetic)
@@ -21,6 +21,7 @@ import {
   AvatarModel,
   AvatarState,
   AvatarOptions,
+  ORB_AVATAR_OPTIONS,
   getAvatarCatalog,
   getRandomClip,
   useAnimationService,
@@ -33,6 +34,7 @@ import {
   getFaceCompositorTrace,
   getFaceOverride,
   getFaceSpeechDebug,
+  getOrbSnapshot,
   setConversationStatus,
   setFaceOverride,
   StudioEnvironment
@@ -58,6 +60,11 @@ declare global {
 const params = new URLSearchParams(location.search)
 const initialAvatar = params.get('avatar')
 const transparent = params.get('bg') === 'transparent'
+
+/** The source for a harness avatar name: a model from AvatarOptions, or a drawn orb. */
+const avatarSource = (name: string): string | undefined =>
+  AvatarOptions[name as keyof typeof AvatarOptions] ?? ORB_AVATAR_OPTIONS[name]
+
 // Fixed for the life of the page. An unknown engine or level throws here, on purpose.
 const speechMode = speechModeFromParams(params)
 const silencedOutput = needsSilencedOutput(speechMode)
@@ -180,13 +187,17 @@ function HarnessScene() {
   })
 
   useEffect(() => {
-    if (initialAvatar && AvatarOptions[initialAvatar as keyof typeof AvatarOptions]) {
-      AvatarState.set((s) => ({ ...s, selectedModel: AvatarOptions[initialAvatar as keyof typeof AvatarOptions] }))
+    const initialSource = initialAvatar ? avatarSource(initialAvatar) : undefined
+    if (initialSource) {
+      AvatarState.set((s) => ({ ...s, selectedModel: initialSource }))
     }
 
     const w = window
     w.__harness = {
+      /** The model avatars. The roster specs compare this with AvatarOptions, so the drawn orbs are listed apart. */
       listAvatars: () => Object.keys(AvatarOptions),
+      /** The drawn avatars (ORB_AVATAR_OPTIONS). selectAvatar and ?avatar= take these names too. */
+      listOrbs: () => Object.keys(ORB_AVATAR_OPTIONS),
 
       /**
        * Every bone in the loaded rig.
@@ -207,7 +218,7 @@ function HarnessScene() {
       currentAvatar: () => AvatarState.get().selectedModel,
 
       selectAvatar(name: string) {
-        const url = AvatarOptions[name as keyof typeof AvatarOptions] ?? name
+        const url = avatarSource(name) ?? name
         w.__avatarLoaded = false
         frameRef.current.ready = false
         AvatarState.set((s) => ({ ...s, selectedModel: url }))
@@ -490,6 +501,9 @@ function HarnessScene() {
       speechDebug() {
         return getFaceSpeechDebug()
       },
+
+      /** The Green Orb's last frame (voice, glow, rings), or null when a model avatar is loaded. */
+      orbSnapshot: () => getOrbSnapshot(),
 
       /**
        * Drive the conversational state the dynamics engine branches on.
