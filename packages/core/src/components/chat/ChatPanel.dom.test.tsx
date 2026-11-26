@@ -61,4 +61,14 @@ describe('ChatPanel', () => {
     render(<ChatPanel messages={[message('1', 'Where do my messages go?', true)]} />)
     expect(screen.queryByText(/Nothing here yet/i)).toBeNull()
   })
+
+  it('marks who said each line, which is how the e2e suite reads a conversation', () => {
+    setViewportWidth(1440)
+    const { container } = render(
+      <ChatPanel messages={[message('1', 'Hello', true), message('2', 'Hi! How can I help?', false)]} />
+    )
+    const bubbles = [...container.querySelectorAll<HTMLElement>('[data-chat-message]')]
+    expect(bubbles.map((b) => b.dataset.chatMessage)).toEqual(['user', 'assistant'])
+    expect(bubbles[1].querySelector('[data-chat-text]')).toHaveTextContent('Hi! How can I help?')
+  })
 })
