@@ -77,9 +77,11 @@ plugin's `open_url` command, which the page is not granted, so they would do not
 ## Limits
 
 - WebXR is not available in any of the system WebViews, so immersive mode stays on the web.
-- On-device models (WebLLM) do not run here: a worker imports the engine from a CDN (esm.run), and the
-  app's content security policy blocks that import (checked in Chromium with the same policy). Bundling
-  the engine with the app would fix it without loosening the policy.
+- On-device models (WebLLM) are switched off here: Check connection says they do not run in the desktop app.
+  Its worker used to import the engine from a CDN, which the app's content security policy blocks (checked
+  in Chromium with the same policy). The engine is bundled with the app now, which the policy allows, but no
+  model has been run in the desktop app yet, so the switch stays until one has
+  (`packages/core/src/services/connection/connectionHealth.ts`).
 - There is no updater: install a new release over the old one.
 - `identifier` is `computer.ci.avatar`, which v0.2.0 ships with. Changing it later moves the app's data
   folder, so users would lose their settings; the owner decides before any store or signed release

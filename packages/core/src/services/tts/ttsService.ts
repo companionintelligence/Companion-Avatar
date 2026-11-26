@@ -11,32 +11,9 @@ import { createSyntheticSpeechWav, syntheticSpeechDuration, syntheticWordTimings
 import { type TTSConfig, type WhisperData, defaultTTSConfig } from './ttsConfig'
 import { apiUrl } from '../../config/apiBase'
 
-// Workerized TTS using vits-web library
-const createTTSWorker = (): Worker => {
-  const ttsWorkerString = `
-import * as tts from 'https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm'
-self.addEventListener('message', async (e) => {
-  const id = e.data.id
-  const text = e.data.text || 'please supply some text'
-  const voiceId = e.data.voice || 'en_GB-hfc_male-medium'
-  console.log('TTS Worker received message:', { id, text, voiceId })
-  tts.predict({text, voiceId}).then(audio => {
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = () => reject(reader.error)
-      reader.readAsArrayBuffer(audio)
-    }).then(audio => {
-      self.postMessage({ audio, id })
-    }).catch(error => {
-      console.error('TTS Worker Error:', error)
-      self.postMessage({ error: error.message, id })
-    })
-  })
-})
-`
-  return new Worker(URL.createObjectURL(new Blob([ttsWorkerString], { type: 'text/javascript' })), { type: 'module' })
-}
+// Local TTS (vits-web) runs in a worker. Vite bundles vits.worker.ts with vits-web, and the browser loads it
+// from the app's own origin.
+const createTTSWorker = (): Worker => new Worker(new URL('./vits.worker.ts', import.meta.url), { type: 'module' })
 
 declare global {
   interface Window {

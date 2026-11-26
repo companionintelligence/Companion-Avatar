@@ -198,6 +198,10 @@ pnpm test:e2e:debug   # Debug mode
 
 # View reports
 pnpm test:report      # Open HTML report
+
+# After a deploy: load the live site (or any URL) headless; fails if it does not mount
+# or asks any origin but its own for anything (scripts/smoke-live.mjs)
+pnpm smoke:live [url] [--allow https://*.arweave.net]
 ```
 
 ## Test Results Location

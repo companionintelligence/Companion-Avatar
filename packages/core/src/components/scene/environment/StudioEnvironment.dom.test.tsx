@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { render, screen } from '@testing-library/react'
+import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EnvironmentBoundary, STUDIO_HDRI_URL, StudioEnvironment } from './StudioEnvironment'
@@ -195,5 +196,108 @@ describe('the scene uses it', () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+})
+
+// The studio light was one file the app took from a CDN at run time. The local engines were two more: each
+// engine's worker imported its library from one (WebLLM from esm.run, vits-web from cdn.jsdelivr.net). Vite now
+// bundles every module the apps run, and the apps serve them themselves. These hold the shipped source to that:
+// no code in it names a package CDN, so none of it can import from one, and both engines start from workers that
+// are bundled with the app. What a library fetches from inside its own code (models, and vits-web's .wasm files,
+// see tts/vits.worker.ts) is not in this source; scripts/smoke-live.mjs watches a deployed page for that.
+describe('no shipped code comes from a CDN', () => {
+  /** The hosts that serve npm and GitHub files as code a page can import, by the names all their hostnames share. */
+  const CDN = /jsdelivr|unpkg|esm\.sh|esm\.run|githack|cdnjs|skypack/i
+
+  /** What a module says in its code rather than its comments: its strings, template parts and JSX text, where a URL would be. */
+  const codeText = (file: string, text: string): string[] => {
+    const kind = /\.tsx$/.test(file) ? ts.ScriptKind.TSX : /\.jsx$/.test(file) ? ts.ScriptKind.JSX : /\.[cm]?js$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS
+    const found: string[] = []
+    const visit = (node: ts.Node): void => {
+      if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node) || ts.isJsxText(node)) found.push(node.text)
+      ts.forEachChild(node, visit)
+    }
+    visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false, kind))
+    return found
+  }
+  /** A page or a stylesheet, without its comments. */
+  const markupText = (file: string, text: string): string[] => [
+    file.endsWith('.css') ? text.replace(/\/\*[\s\S]*?\*\//g, '') : text.replace(/<!--[\s\S]*?-->/g, '')
+  ]
+  const namesACdn = (file: string, text: string) =>
+    // most files name no CDN even in a comment, and need no parsing to say so
+    !CDN.test(text) ? [] : (/\.(html|css)$/.test(file) ? markupText(file, text) : codeText(file, text)).filter((said) => CDN.test(said))
+
+  /**
+   * The source of everything the apps hand a browser: the packages, and each app's code, pages and public files.
+   * Tests, stories and type declarations are not shipped, and public/assets/ holds the media pack-assets copies there.
+   */
+  const SHIPPED = [
+    'packages/core/src',
+    'packages/engine/src',
+    'packages/agent/src',
+    'apps/web/src',
+    'apps/web/public',
+    'apps/web/index.html',
+    'apps/web/harness.html',
+    'apps/vision-pro/src',
+    'apps/vision-pro/public',
+    'apps/vision-pro/index.html',
+    'apps/vanilla-client/src',
+    'apps/vanilla-client/index.html'
+  ]
+  const walk = (relative: string): string[] => {
+    if (/(?:^|\/)node_modules$|^apps\/[^/]+\/public\/assets$/.test(relative)) return []
+    const full = path.join(repoRoot, relative)
+    if (statSync(full).isFile()) return [relative]
+    return readdirSync(full).flatMap((name) => walk(`${relative}/${name}`))
+  }
+  const shippedFiles = () =>
+    SHIPPED.flatMap((entry) => {
+      if (!existsSync(path.join(repoRoot, entry))) throw new Error(`${entry} is not there: a moved app needs this list to follow it`)
+      return walk(entry)
+    }).filter((file) => /\.(?:[cm]?[jt]sx?|html|css)$/.test(file) && !/\.(?:test|spec|stories)\.|\.d\.ts$/.test(file))
+
+  // It reads a few hundred files, which a full parallel run can slow past the default 5 s.
+  it('names no package CDN anywhere in the code the apps ship', { timeout: 30_000 }, () => {
+    const files = shippedFiles()
+    const offenders = files.flatMap((file) =>
+      namesACdn(file, readFileSync(path.join(repoRoot, file), 'utf8')).map((said) => `${file}: ${said.trim().slice(0, 140)}`)
+    )
+    // a list that found nothing to read would pass for the wrong reason
+    expect(files.length).toBeGreaterThan(150)
+    expect(files).toContain('packages/core/src/services/llm/llmService.ts')
+    expect(files).toContain('apps/web/index.html')
+    expect(offenders).toEqual([])
+  })
+
+  it('finds a CDN where code would load from it, and not in a comment', () => {
+    // The two worker sources as they were, a script tag, and a dynamic import:
+    expect(namesACdn('w.ts', "const s = `\nimport * as webllm from 'https://esm.run/@mlc-ai/web-llm';\n`")).toHaveLength(1)
+    expect(namesACdn('w.ts', "import * as tts from 'https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm'")).toHaveLength(1)
+    expect(namesACdn('w.tsx', 'export const A = () => <script src="https://unpkg.com/three@0.182.0" />')).toHaveLength(1)
+    expect(namesACdn('w.js', 'await import(`https://esm.sh/${name}`)')).toHaveLength(1)
+    expect(namesACdn('i.html', '<script type="module" src="https://cdn.skypack.dev/three"></script>')).toHaveLength(1)
+    expect(namesACdn('s.css', "@import url('https://cdnjs.cloudflare.com/ajax/libs/x.css');")).toHaveLength(1)
+    // ...and what is only history:
+    expect(namesACdn('w.ts', '// it came from https://esm.run/@mlc-ai/web-llm\n/* and from raw.githack.com */\nconst accept = "image/*"')).toEqual([])
+    expect(namesACdn('i.html', '<!-- once from unpkg.com --><script type="module" src="/src/main.tsx"></script>')).toEqual([])
+  })
+
+  const read = (file: string) => readFileSync(path.join(repoRoot, file), 'utf8')
+  const coreDependencies = JSON.parse(read('packages/core/package.json')).dependencies as Record<string, string>
+
+  it.each([
+    ['the on-device model (WebLLM)', 'packages/core/src/services/llm/llmService.ts', 'webllm.worker.ts', '@mlc-ai/web-llm'],
+    ['local text-to-speech (vits-web)', 'packages/core/src/services/tts/ttsService.ts', 'vits.worker.ts', '@diffusionstudio/vits-web']
+  ])('%s runs in a worker that is bundled with the app', (_name, service, worker, library) => {
+    const code = read(service)
+    // a module worker Vite finds and bundles: new Worker(new URL(<literal>, import.meta.url)), nothing built from a string
+    expect(code).toContain(`new Worker(new URL('./${worker}', import.meta.url), { type: 'module' })`)
+    expect(code).not.toMatch(/new Blob\(/)
+    // the worker imports the library by its package name, so it runs the version pnpm-lock.yaml pins
+    const workerCode = read(path.join(path.dirname(service), worker))
+    expect(workerCode).toMatch(new RegExp(`from '${library.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}'`))
+    expect(coreDependencies).toHaveProperty([library])
   })
 })

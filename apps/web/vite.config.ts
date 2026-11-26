@@ -103,6 +103,12 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom', 'three']
   },
+  worker: {
+    // Workers are bundled as ES modules, and the app starts them as module workers. The local text-to-speech
+    // worker (packages/core/src/services/tts/vits.worker.ts) loads parts of vits-web with import(), which
+    // Vite's default worker format (iife) cannot split into chunks.
+    format: 'es'
+  },
   optimizeDeps: {
     // onnxruntime-web (the voice-activity model's runtime, through @ricky0123/vad-web) loads
     // ort-wasm-simd-threaded.mjs and its .wasm from beside its own module. Pre-bundled into

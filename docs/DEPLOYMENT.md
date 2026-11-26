@@ -290,6 +290,41 @@ A finding names the file, the rule and, for a value, the variable. It never prin
 (`VITE_SENTRY_DSN`) is not a finding. Binary assets, source maps and `node_modules` are not read. To run it by hand after
 a build: `node scripts/check-dist-secrets.mjs [dist dir] [env dir ...]`.
 
+### After a deploy: the page asks no other host for anything
+
+On 2026-11-24 the site went blank because the scene took its studio light from raw.githack.com and that host failed.
+The app now serves everything it runs itself: the light (`assets/environments/`), and the two local engines, whose
+workers Vite bundles (`packages/core/src/services/llm/webllm.worker.ts`, `.../tts/vits.worker.ts`) where they used to
+import their libraries from esm.run and cdn.jsdelivr.net. A test (`StudioEnvironment.dom.test.tsx`) fails when shipped
+source names a package CDN. `scripts/smoke-live.mjs` checks a deploy from a browser: it loads the page in headless
+Chromium, waits for the app to mount (a canvas in `#root`), watches until no request has started for 5 s, checks the
+app is still mounted, and fails if any request, its workers' included, went to an origin other than the page's own.
+
+```bash
+pnpm smoke:live                                          # https://avatar.ci.computer
+pnpm smoke:live https://<branch>.avatars-zbe.pages.dev   # a preview
+pnpm smoke:live http://127.0.0.1:4173/                   # after `vite preview` of a production build
+gh workflow run smoke-live.yml [-f url=<url>] [-f allow=<origins>]   # the same, on a runner
+```
+
+It only loads the page and presses nothing, so features someone has to switch on are not exercised. If one is (or a
+test page needs one), `--allow <origin>` (repeatable; `SMOKE_ALLOW` or the workflow's `allow` input takes a
+comma-separated list) lets that origin through; `https://*.example.com` takes the subdomains too. The list is empty by
+default. What those features still fetch from other hosts:
+
+| Feature | Fetches |
+| --- | --- |
+| On-device model (WebLLM) | weights from `huggingface.co` (served from `*.hf.co`); the model's compiled WebGPU library, a 5–6 MB `.wasm`, from `raw.githubusercontent.com` |
+| Local text-to-speech (`tts.mode: 'local'`) | the voice from `huggingface.co`; onnxruntime's `.wasm` from `cdnjs.cloudflare.com`; the phonemizer (espeak-ng, GPL-3.0) from `cdn.jsdelivr.net`. vits-web fixes those addresses in its code |
+| CC0 avatars | `arweave.net`, which sends each file on to a subdomain (`--allow 'https://*.arweave.net'`) |
+| An avatar by URL | whatever host the URL names (Ready Player Me: `models.readyplayer.me`) |
+| WebXR with controllers | the controller profiles and models from `cdn.jsdelivr.net` (`@pmndrs/xr`'s default) |
+
+On 2026-11-26 the check found one request on `avatar.ci.computer` that the build does not make:
+`static.cloudflareinsights.com/beacon.min.js`, Cloudflare Web Analytics' script, which the edge adds to the HTML it
+serves there. Until Web Analytics stops adding it, or someone decides it may stay, the check fails on production;
+`-f allow=https://static.cloudflareinsights.com` runs the rest of it.
+
 ### Installing it as an app (PWA)
 
 `avatar.ci.computer` can be installed from the browser, with no store review. The files below make it
