@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 
 import { useConnectionCheck } from './useConnectionCheck'
+import { isRememberedConnection } from './verifiedConnections'
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  localStorage.clear()
 })
 
 describe('useConnectionCheck', () => {
@@ -237,5 +239,39 @@ describe('useConnectionCheck against the server the user picked', () => {
     await waitFor(() => expect(result.current.healthState).toBe('error'))
     expect(result.current.healthError).toContain('WebGPU')
     expect(onActivationStateChange).toHaveBeenCalledWith('unverified')
+  })
+
+  it('remembers a server whose check passed, so the next launch can check it by itself', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ status: 'ok', reachable: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+    )
+    const target = { url: 'https://box.example.ts.net:18787/api/chat', model: '' }
+
+    const { result } = renderHook(() => useConnectionCheck('proxy', vi.fn(), target))
+    await act(async () => {
+      await result.current.checkConnection()
+    })
+
+    await waitFor(() => expect(result.current.healthState).toBe('healthy'))
+    expect(isRememberedConnection('proxy', target)).toBe(true)
+  })
+
+  it('does not remember a server whose check failed', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Load failed')))
+    const target = { url: 'https://box.example.ts.net:18787/api/chat', model: '' }
+
+    const { result } = renderHook(() => useConnectionCheck('proxy', vi.fn(), target))
+    await act(async () => {
+      await result.current.checkConnection()
+    })
+
+    await waitFor(() => expect(result.current.healthState).toBe('error'))
+    expect(isRememberedConnection('proxy', target)).toBe(false)
   })
 })

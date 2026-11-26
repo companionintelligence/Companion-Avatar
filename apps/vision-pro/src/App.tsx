@@ -10,6 +10,7 @@ import {
   ControlOverlay,
   OnboardingOverlay,
   useAgent,
+  useRememberedConnection,
   useResponsiveLayout,
   AppConfigState,
   LLMSettingsState,
@@ -110,6 +111,8 @@ export const App = () => {
   const [sceneActions, setSceneActions] = useState<SceneActions | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [activationState, setActivationState] = useState<ActivationState>('unverified')
+  // As in apps/web: no Check connection after a relaunch for the demo or a server checked before.
+  useRememberedConnection(llmSettings, setActivationState)
   const setXRStore = useCallback((store: XRStore) => {
     xrStore.current = store
   }, [])

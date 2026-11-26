@@ -14,6 +14,7 @@ import {
   OnboardingOverlay,
   connectionTargetFor,
   useAgent,
+  useRememberedConnection,
   useResponsiveLayout,
   AppConfigState,
   type AppConfig,
@@ -83,6 +84,9 @@ export const App = () => {
   const [sceneActions, setSceneActions] = useState<SceneActions | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [activationState, setActivationState] = useState<ActivationState>('unverified')
+  // A relaunch no longer needs Check connection: the demo starts Demo-only, and a server checked
+  // here before is checked again quietly (see useRememberedConnection).
+  useRememberedConnection(llmSettings, setActivationState)
   const setXRStore = useCallback((store: XRStore) => {
     xrStore.current = store
   }, [])
@@ -195,7 +199,11 @@ export const App = () => {
 
   const handleSkipOnboarding = useCallback(() => {
     setShowOnboarding(false)
-    setActivationState(llmSettings.llm_provider === 'script' ? 'demo-only' : 'unverified')
+    // Skipping the microphone must not undo a check: onboarding has its own Check connection
+    // button, and a session it verified used to drop back to Unverified here.
+    setActivationState((current) =>
+      current === 'unverified' && llmSettings.llm_provider === 'script' ? 'demo-only' : current
+    )
     rememberOnboarded()
   }, [llmSettings.llm_provider])
 
