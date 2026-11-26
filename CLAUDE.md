@@ -36,6 +36,9 @@ pnpm dev:proxy
 pnpm lint
 pnpm test
 pnpm --filter @ci-avatar/web build
+
+# Every Storybook story as a test in headless Chromium, axe at error (TESTING.md)
+pnpm test:stories
 ```
 
 `pnpm test` runs Vitest across six projects (see `vitest.config.ts`); Playwright e2e is

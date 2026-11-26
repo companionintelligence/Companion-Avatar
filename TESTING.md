@@ -53,6 +53,30 @@ tests` step is just `pnpm test`. That step (alongside lint, the web typecheck/bu
 a Storybook build smoke test) is what gates merges — the Playwright suite below has no
 job in that workflow and does not block a PR.
 
+### Storybook stories (browser mode)
+
+`pnpm test:stories` runs every Storybook story as a Vitest test in headless Chromium, through
+`@storybook/addon-vitest` and Playwright. Each test renders the story, runs its play function,
+then runs axe through `@storybook/addon-a11y`. The config is `apps/web/vitest.config.ts`, not
+one of the projects above, so `pnpm test` still needs no browser.
+
+- The stories sit beside their components under `packages/core/src/components`;
+  `apps/web/.storybook/main.ts` finds them.
+- `parameters.a11y.test` is `'error'` in `apps/web/.storybook/preview.tsx`, so an axe
+  violation fails the story. A story that cannot pass yet sets
+  `parameters: { a11y: { test: 'todo' } }` with a comment naming the rule.
+- State stories (`Default`, `Open`) have no play function. Each interaction gets its own story
+  with one (`FiresOnClick`, `CollapsesOnToggle`), so the state stories look the same in
+  Storybook.
+- axe sees the DOM only. The WebGL scene has no stories.
+- Run the stories of one file by name: `pnpm test:stories ChatPanel`.
+- The first run needs Playwright's Chromium:
+  `pnpm --filter @ci-avatar/web exec playwright install chromium`.
+- Storybook telemetry is off: `core.disableTelemetry` in `main.ts`, and the script sets
+  `STORYBOOK_DISABLE_TELEMETRY=1`.
+
+The suite is registered as `component-stories` in `.agent-configs/specs.toml`.
+
 ## Playwright — End-to-End / Browser Tests
 
 Everything from here to the end of this file (`Overview` through `Conclusion`) documents

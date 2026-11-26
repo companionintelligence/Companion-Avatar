@@ -42,6 +42,28 @@ export const Listening: Story = {
   args: { isRecording: true, vadDetecting: true }
 }
 
+/** Each action on the full bar calls its own handler, once, and leaves the mic alone. */
+export const ActionsFireOnClick: Story = {
+  args: AllActions.args,
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const actions = [
+      ['Enter VR', args.onEnterVRMode],
+      ['Enter AR', args.onEnterARMode],
+      ['Exit XR', args.onExitXR],
+      ['Recenter', args.onRecenter],
+      ['Smaller', args.onScaleDown],
+      ['Larger', args.onScaleUp],
+      ['Settings', args.onOpenSettings]
+    ] as const
+    for (const [name, handler] of actions) {
+      await userEvent.click(canvas.getByRole('button', { name }))
+      await expect(handler).toHaveBeenCalledTimes(1)
+    }
+    await expect(args.handleAppStateChange).not.toHaveBeenCalled()
+  }
+}
+
 /** Clicking the mic toggles the microphone config via its handler. */
 export const MicTogglesOnClick: Story = {
   play: async ({ args, canvasElement }) => {

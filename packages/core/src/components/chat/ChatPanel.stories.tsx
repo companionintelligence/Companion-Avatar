@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, userEvent, within } from 'storybook/test'
 
 import type { ConversationMessage } from '../../services/conversation/conversationType'
 import { ChatPanel } from './ChatPanel'
@@ -34,4 +35,23 @@ export const Conversation: Story = {}
 
 export const Empty: Story = {
   args: { messages: [] }
+}
+
+/**
+ * The toggle collapses the panel. Open, the history takes keyboard focus so it can be scrolled;
+ * collapsed, it is out of sight and out of the tab order. The story ends collapsed, so axe checks
+ * that state too.
+ */
+export const CollapsesOnToggle: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const log = canvas.getByRole('region', { name: 'Chat log' })
+    log.focus()
+    await expect(log).toHaveFocus()
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Hide Chat' }))
+    await expect(canvas.getByRole('button', { name: 'Show Chat' })).toBeInTheDocument()
+    log.focus()
+    await expect(log).not.toHaveFocus()
+  }
 }
