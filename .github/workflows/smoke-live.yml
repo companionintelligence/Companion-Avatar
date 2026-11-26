@@ -1,0 +1,56 @@
+name: Smoke-check the live site
+
+# Loads a deployed copy of the web app in headless Chromium and fails when it does not mount, or when it asks
+# any origin but its own for anything (scripts/smoke-live.mjs). Run it after a deploy:
+#
+#   gh workflow run smoke-live.yml
+#   gh workflow run smoke-live.yml -f url=https://<branch>.avatars-zbe.pages.dev -f allow='https://*.arweave.net'
+#
+# Started by hand only: this org's workflows run on workflow_dispatch, never on push.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: The page to load
+        required: false
+        default: https://avatar.ci.computer
+      allow:
+        description: Other origins the page may contact, comma-separated (for opt-in features; empty by default)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: load the page, watch its requests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # The same setup as test.yml, with the actions pinned to the commits the release workflows use.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The inputs reach the script as environment variables, never as shell text.
+      - name: Load the page
+        env:
+          SMOKE_URL: ${{ inputs.url }}
+          SMOKE_ALLOW: ${{ inputs.allow }}
+        run: pnpm smoke:live
