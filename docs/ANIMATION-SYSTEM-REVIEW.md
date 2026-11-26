@@ -60,6 +60,19 @@ What is left:
 | L15 | Open | `gallery-md.mjs` leaves a stale sub-page when a page's clips all fail. The committed gallery shows it: 31 clips in the manifest, 98 images on disk. |
 | L16 | Open | `captureEyes` leaks a browser context when a capture fails. |
 
+## Found after PR #220 (2026-11-24)
+
+One finding turned up after the review. It is not one of the 59 below and the counts above do not include it. It
+surfaced while tracing why Work Boy's head hung 22 degrees nose down once PR #220 let the neck keep its own rest
+(M25): the other half of the cause was the torso, which this finding is about.
+
+### H13. VRMA clips drive the real bones with the normalized skeleton's values, so a VRM 1.0 avatar whose bones do not rest at the identity loses its rest pose
+
+- **Where:** `packages/core/src/components/scene/avatar/AvatarModel.tsx`, `useExternalAnimations` (the VRMA clip build) · animation · correctness · **CONFIRMED** (against three-vrm's own `humanoid.update()`, and live)
+- **Mechanism:** `createVRMAnimationClip` writes tracks for the normalized skeleton, where every bone rests at the identity. three-vrm carries them onto the real bones as `raw = inverse(PW) * q * PW * R` (R the bone's own rest rotation, PW its parent's rest rotation in the avatar's frame; `VRMHumanoidRig.update`). The app binds the clip to the real bones (it strips the `Normalized_` prefix) and never calls `humanoid.update()`, which would rewrite the neck and head the gaze owns, and it wrote q as it was. That is exact only where R and PW are the identity, as they are on all eight VRM 0.x avatars.
+- **Fails when:** a VRM 1.0 avatar whose bones do not rest at the identity plays any VRMA clip. Work Boy and Casual Person have 36 of 54 bones with a rest of their own, or a parent's, that is not the identity (hips 7 degrees, chest -16, upper chest -12, neck 26, shoulders 21, thumbs 103), and Aria 40 of 52 (her arms hang in a frame turned 90 degrees). Idle, live: Work Boy's torso lost its authored lean, and with the neck keeping its rest (M25) the head hung 21 degrees nose down (authored: 0.6 degrees nose down); Aria's arm bones never left the T-pose (84 to 91 degrees from straight down), because the clip's arm turns landed about the wrong axes.
+- **Status:** Fixed by `vrmaRetarget.ts`, which carries each rotation over its bone's rest when the clip is built. Live after the fix: Work Boy and Casual Person's head 1.7 to 2.3 degrees nose down at idle (the clip's own torso lean on top of the authored rest); Aria's arm bones 2 to 6 degrees from straight down; all six VRMA clips on Yuki (VRM 0.x) hash-identical to before. Tested against the library's update for every shipped VRM. It also shows a fault in Aria's file: her mesh is modeled with the arms about 45 degrees down on a skeleton that rests in a T-pose (the hand vertex weighted 95% to the hand bone sits 0.41 m from it at bind; on Work Boy, Casual Person and Yuki it is 0.05 to 0.08 m). With her bones now following the clip her mesh arms swing in past vertical and her shoulders bulge; before, the bones stayed at rest and the mesh showed its modeled pose. The file needs its mesh and skeleton brought to one pose.
+
 ## CRITICAL (2)
 
 ### C1. Barge-in during TTS playback corrupts nextExpectedId, permanently silencing all subsequent speech until another barge-in
