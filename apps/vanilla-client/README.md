@@ -16,7 +16,7 @@ apps/vanilla-client/
 │   ├── ui/          # DOM and in-world HUDs
 │   └── xr/          # AR/VR sessions and hit testing
 ├── public/          # Default robot, audio, and textures
-├── server/          # Optional Grounding DINO detection server
+├── server/          # Older Grounding DINO WebSocket server (detection now uses the shared POST /detect)
 └── tools/           # Listing capture helpers
 ```
 

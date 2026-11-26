@@ -52,12 +52,17 @@ const DEFAULTS = {
     attachFrameToChat: true,
     frameMaxSize: 768,
     frameJpegQuality: 0.8,
-    // Grounding DINO WebSocket (Vite proxies /ws → ws://localhost:8000/ws).
-    detectionUrl: '',          // '' = same-origin /ws
+    // The shared detection service, POST /detect (Companion-Scan's Grounding DINO service; the
+    // dev server proxies /detect to DETECT_HTTP_TARGET, default http://localhost:8010).
+    // '' = same-origin /detect. A ws:// URL selects the older bundled WebSocket server instead.
+    detectionUrl: '',
+    // Bearer token, when the service runs with GDINO_TOKEN.
+    detectionToken: '',
     detectionPrompt: 'object . person . chair . table . cup . bottle . door . screen . plant . laptop',
     detectionEnabled: true,
     boxThreshold: 0.35,
     textThreshold: 0.25,
+    maxDetections: 50,
     // Non-XR mode runs detection on an interval; XR mode is stillness-gated.
     flatIntervalMs: 3000,
     maxSpatialLabels: 5,

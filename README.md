@@ -117,7 +117,7 @@ input — the minimal text-only interaction surface.
 │   ├── desktop/        # Tauri 2 desktop app (Windows, macOS, Linux) around the web app
 │   ├── mobile/         # Capacitor 8 Android and iOS apps around the web app
 │   ├── proxy/          # Hono BFF: chat, voice and health under /api
-│   ├── detect/         # Optional object-detection sidecar (Grounding DINO)
+│   ├── detect/         # Older Grounding DINO sidecar, superseded by the shared POST /detect service
 │   ├── vision-pro/     # Apple Vision Pro (WebSpatial) application
 │   └── vanilla-client/ # Vanilla Three.js/WebGPU/WebXR client from Web-2
 ├── snap/               # Snapcraft definition for the Linux snap

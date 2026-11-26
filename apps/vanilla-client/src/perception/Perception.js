@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { CameraFeed } from './CameraFeed.js';
 import { DetectionClient } from './DetectionClient.js';
+import { HttpDetectionClient } from './HttpDetectionClient.js';
 
 /**
  * Perception — the companion's eyes.
@@ -68,9 +69,13 @@ export class Perception {
   }
 
   _connectDetector() {
-    const url = this.config.vision.detectionUrl
-      || `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
-    this.client = new DetectionClient(url);
+    // The shared detection service (POST /detect) by default, on this origin unless the config
+    // names another. A ws:// or wss:// URL still selects the older bundled WebSocket server
+    // (apps/vanilla-client/server), until the owner decides to remove it.
+    const url = this.config.vision.detectionUrl || '/detect';
+    this.client = /^wss?:\/\//i.test(url)
+      ? new DetectionClient(url)
+      : new HttpDetectionClient(url, { token: this.config.vision.detectionToken });
     this.client.onStatusChange = (up) => {
       this.connected = up;
       this.events.emit('detector-status', up);
@@ -81,6 +86,27 @@ export class Perception {
     }).catch(() => {
       console.warn('[Perception] detection server unreachable');
     });
+  }
+
+  /**
+   * The HTTP service has no socket to reconnect: ask its /health again, at most every 10 s unless
+   * the agent is asking now. (The WebSocket client reconnects by itself.)
+   */
+  async _retryHttpConnect(force) {
+    if (!(this.client instanceof HttpDetectionClient) || this._connecting) return;
+    const now = performance.now();
+    if (!force && now - (this._lastConnectAttempt ?? -Infinity) < 10_000) return;
+    this._lastConnectAttempt = now;
+    this._connecting = true;
+    try {
+      await this.client.connect();
+      this.connected = true;
+      this.events.emit('detector-status', true);
+    } catch {
+      // Still down or still loading its model; the next attempt says so again.
+    } finally {
+      this._connecting = false;
+    }
   }
 
   async startCamera() {
@@ -105,6 +131,7 @@ export class Perception {
   async detectNow(prompt) {
     if (!this.detectionAvailable) {
       if (!this.camera.active) await this.startCamera();
+      if (!this.connected) await this._retryHttpConnect(true);
       if (!this.detectionAvailable) return [];
     }
     const result = await this.client.detect(
@@ -113,6 +140,7 @@ export class Perception {
       {
         boxThreshold: this.config.vision.boxThreshold,
         textThreshold: this.config.vision.textThreshold,
+        maxDetections: this.config.vision.maxDetections,
       },
     );
     const detections = result.detections ?? [];
@@ -190,6 +218,7 @@ export class Perception {
   }
 
   _flatCadence() {
+    if (!this.connected) void this._retryHttpConnect(false);
     if (!this.connected || !this.camera.active || this._detecting) return;
     const now = performance.now();
     if (now - this._lastFlatDetect < this.config.vision.flatIntervalMs) return;
@@ -202,6 +231,7 @@ export class Perception {
     this.client.detect(this.camera.video, this.config.vision.detectionPrompt, {
       boxThreshold: this.config.vision.boxThreshold,
       textThreshold: this.config.vision.textThreshold,
+      maxDetections: this.config.vision.maxDetections,
     }).then((result) => {
       const detections = result.detections ?? [];
       this._ingest(detections);
