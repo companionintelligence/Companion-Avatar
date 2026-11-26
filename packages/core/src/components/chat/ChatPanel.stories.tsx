@@ -37,21 +37,30 @@ export const Empty: Story = {
   args: { messages: [] }
 }
 
+/** Presses Tab from the top of the page, as a keyboard user would, and returns what took focus. */
+const tabThrough = async (presses = 6): Promise<Element[]> => {
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  const reached: Element[] = []
+  for (let press = 0; press < presses; press++) {
+    await userEvent.tab()
+    if (document.activeElement && document.activeElement !== document.body) reached.push(document.activeElement)
+  }
+  return reached
+}
+
 /**
- * The toggle collapses the panel. Open, the history takes keyboard focus so it can be scrolled;
- * collapsed, it is out of sight and out of the tab order. The story ends collapsed, so axe checks
- * that state too.
+ * The toggle collapses the panel. Open, Tab reaches the history, so a keyboard user can scroll it.
+ * Collapsed, the history is out of sight and Tab never lands on it. The story ends collapsed, so axe
+ * checks that state too.
  */
 export const CollapsesOnToggle: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     const log = canvas.getByRole('region', { name: 'Chat log' })
-    log.focus()
-    await expect(log).toHaveFocus()
+    await expect(await tabThrough()).toContain(log)
 
     await userEvent.click(canvas.getByRole('button', { name: 'Hide Chat' }))
     await expect(canvas.getByRole('button', { name: 'Show Chat' })).toBeInTheDocument()
-    log.focus()
-    await expect(log).not.toHaveFocus()
+    await expect(await tabThrough()).not.toContain(log)
   }
 }
