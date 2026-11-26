@@ -103,6 +103,14 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom', 'three']
   },
+  optimizeDeps: {
+    // onnxruntime-web (the voice-activity model's runtime, through @ricky0123/vad-web) loads
+    // ort-wasm-simd-threaded.mjs and its .wasm from beside its own module. Pre-bundled into
+    // node_modules/.vite/deps, it looks for them there, and the dev server warned that
+    // ort-wasm-simd-threaded.mjs "does not exist ... in the optimize deps directory" (beta-red,
+    // 2026-11-25). Served from node_modules instead, its own files are where it expects them.
+    exclude: ['onnxruntime-web']
+  },
   build: {
     rollupOptions: {
       onwarn(warning, warn) {

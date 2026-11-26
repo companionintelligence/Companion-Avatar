@@ -8,7 +8,10 @@ interface ChatBubbleProps {
 
 export const ChatBubble = ({ message }: ChatBubbleProps) => {
   return (
+    // data-chat-message and data-chat-text are what the e2e suite reads a conversation by
+    // (tests/agent.spec.ts); the bubbles have no other stable hook.
     <div
+      data-chat-message={message.isUser ? 'user' : 'assistant'}
       style={{
         margin: '0.5rem 0',
         display: 'flex',
@@ -57,7 +60,7 @@ export const ChatBubble = ({ message }: ChatBubbleProps) => {
         <div style={{ marginBottom: '0.125rem', fontSize: '0.75em', opacity: 0.7 }}>
           {message.isUser ? 'You' : 'Assistant'}
         </div>
-        <div>{message.text}</div>
+        <div data-chat-text>{message.text}</div>
       </div>
     </div>
   )

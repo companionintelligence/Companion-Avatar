@@ -62,4 +62,16 @@ describe('resolveConfig', () => {
     const cfg = resolveConfig({ APP_AIAVATARKIT_URL: 'http://avatar:8000/v1/' })
     expect(cfg.aiavatarkitUrl).toBe('http://avatar:8000/v1')
   })
+
+  it('leaves the context window to the Ollama server unless APP_OLLAMA_NUM_CTX is set', () => {
+    expect(resolveConfig({}).ollamaNumCtx).toBeNull()
+    expect(resolveConfig({ APP_OLLAMA_NUM_CTX: ' ' }).ollamaNumCtx).toBeNull()
+    expect(resolveConfig({ APP_OLLAMA_NUM_CTX: '4096' }).ollamaNumCtx).toBe(4096)
+  })
+
+  it('rejects an APP_OLLAMA_NUM_CTX that is not a sensible whole number of tokens', () => {
+    for (const bad of ['4k', '4096.5', '0', '-1', '100', '99999999']) {
+      expect(() => resolveConfig({ APP_OLLAMA_NUM_CTX: bad })).toThrow(/APP_OLLAMA_NUM_CTX/)
+    }
+  })
 })

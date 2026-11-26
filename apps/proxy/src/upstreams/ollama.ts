@@ -18,7 +18,9 @@ export function createOllamaAdapter(cfg: ResolvedConfig): UpstreamAdapter {
           body: JSON.stringify({
             model: req.model || cfg.ollamaModel,
             messages: req.messages,
-            stream: true
+            stream: true,
+            // Only when APP_OLLAMA_NUM_CTX is set; otherwise the server's OLLAMA_CONTEXT_LENGTH applies.
+            ...(cfg.ollamaNumCtx ? { options: { num_ctx: cfg.ollamaNumCtx } } : {})
           }),
           signal
         })

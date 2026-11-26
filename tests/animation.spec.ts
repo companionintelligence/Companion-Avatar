@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { timingSkipReason } from './support/timingGate'
 
 /**
  * Helper to wait for agent ready
@@ -132,6 +133,10 @@ test.describe('Avatar Animation Tests', () => {
   })
 
   test('should maintain acceptable frame rate', async ({ page }) => {
+    // Only where a frame rate means something: a GPU, and a host that is not swamped.
+    const unmeasurable = await timingSkipReason(page)
+    test.skip(unmeasurable !== null, unmeasurable ?? '')
+
     // Estimate FPS
     const fps = await estimateFPS(page, 3000)
     
@@ -191,6 +196,11 @@ test.describe('Avatar Animation Tests', () => {
   })
 
   test('should have blinking animation', async ({ page }) => {
+    // Twenty canvas screenshots in ten seconds: with software rendering or a swamped host they
+    // outlast the test's timeout before a blink can be seen.
+    const unmeasurable = await timingSkipReason(page)
+    test.skip(unmeasurable !== null, unmeasurable ?? '')
+
     // Blinks should occur every 2-8 seconds according to emote config
     // We'll watch for 10 seconds and check for changes
     
@@ -217,6 +227,9 @@ test.describe('Avatar Animation Tests', () => {
   })
 
   test('should respond to emotes/emotions', async ({ page }) => {
+    // Three messages, each followed by canvas screenshots: with software rendering on a busy host
+    // that outlasted the 60 s default (2026-11-25), so this test gets three times as long.
+    test.slow()
     // This would require triggering different emotions
     // For now, we'll just verify the system can handle emotion changes
     

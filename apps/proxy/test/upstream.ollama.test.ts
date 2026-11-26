@@ -66,4 +66,17 @@ describe('ollama adapter', () => {
     const events = await collect(adapter.chat({ messages: [] }, new AbortController().signal))
     expect(events[0].type).toBe('error')
   })
+
+  it('asks for the configured context window with every chat, and for none by default', async () => {
+    const fetchMock = vi.fn(async () => streamResponse([JSON.stringify({ done: true }) + '\n']))
+    vi.stubGlobal('fetch', fetchMock)
+    const request = { messages: [{ role: 'user' as const, content: 'hi' }] }
+
+    await collect(createOllamaAdapter(resolveConfig({ APP_OLLAMA_NUM_CTX: '4096' })).chat(request, new AbortController().signal))
+    await collect(createOllamaAdapter(resolveConfig({})).chat(request, new AbortController().signal))
+
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)))
+    expect(bodies[0].options).toEqual({ num_ctx: 4096 })
+    expect(bodies[1].options).toBeUndefined()
+  })
 })

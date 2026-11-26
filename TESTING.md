@@ -130,13 +130,25 @@ Successfully created comprehensive end-to-end testing infrastructure using Playw
 ## Infrastructure
 
 ### Configuration (`playwright.config.ts`)
-- **Base URL**: http://localhost:5174
-- **Timeouts**: 60s per test, 120s for server startup
+- **App under test**: the dev server on http://localhost:5173 by default. `E2E_SERVER=preview` builds the app and
+  the harness page for production (`apps/web/vite.e2e.config.ts`) and serves them with `vite preview` on
+  http://127.0.0.1:4196 (`E2E_PORT`). Use preview where the dev server cannot serve the app, for example on a Mac
+  whose antivirus quarantines Vite's pre-bundled `@react-three/drei`.
+- **Backend**: both build the app against Ollama, `E2E_OLLAMA_URL` (default http://localhost:11434) with
+  `E2E_OLLAMA_MODEL` (default `gemma3:1b`). The agent specs check that server first and press Check
+  connection before they talk. Without it they are skipped with the reason; `E2E_REQUIRE_BACKEND=1` fails
+  them instead.
+- **Timing tests**: the frame-rate and blink tests skip, with the reason, under software rendering (no GPU)
+  or when the host's load per CPU is above `E2E_MAX_LOAD_PER_CPU` (default 1.5). Either makes a frame rate
+  meaningless (`tests/support/timingGate.ts`).
+- **Speech for the face tests**: the synthetic voice at full level, as in `playwright.config.harness.ts`
+  (`HARNESS_TTS`, `HARNESS_TTS_VOLUME`).
+- **Not in this config**: `tests/container/`, which needs the published container and has its own config.
+- **Timeouts**: 60s per test, 120s for server startup (600s for a preview build)
 - **Browser**: Chromium (Chrome for Testing)
 - **Permissions**: Microphone, speaker auto-granted
 - **Media**: Fake devices for consistent testing
 - **Reports**: HTML, JSON, screenshots, videos
-- **Auto Server**: Starts dev server with Ollama config
 
 ### Test Data (`tests/data/questionBank.ts`)
 - 50+ test questions across 8 categories

@@ -7,6 +7,7 @@ import {
   type ConnectionHealth,
   type ConnectionTarget
 } from './connectionHealth'
+import { rememberVerifiedConnection } from './verifiedConnections'
 
 export interface UseConnectionCheckResult {
   healthState: ConnectionCheckState
@@ -18,6 +19,8 @@ export interface UseConnectionCheckResult {
 /**
  * "Check connection" for the provider the user picked. `target` is the server URL and model
  * they picked with it (see `ConnectionTarget`); without one, the check asks this build's own BFF.
+ * A check that passes is remembered (`verifiedConnections`), so the next launch can repeat it by
+ * itself instead of asking for the button again.
  */
 export function useConnectionCheck(
   provider: LLMProvider,
@@ -46,9 +49,11 @@ export function useConnectionCheck(
     setHealthError(null)
 
     try {
-      const payload = await fetchConnectionHealth(provider, { url: targetUrl, model: targetModel })
+      const checked = { url: targetUrl, model: targetModel }
+      const payload = await fetchConnectionHealth(provider, checked)
       setHealth(payload)
       onActivationStateChange?.(deriveActivationState(payload, provider))
+      if (payload.reachable) rememberVerifiedConnection(provider, checked)
       if (!payload.reachable) {
         setHealthState('error')
         setHealthError(payload.detail ?? null)

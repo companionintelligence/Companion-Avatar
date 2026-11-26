@@ -117,7 +117,7 @@ input — the minimal text-only interaction surface.
 │   ├── desktop/        # Tauri 2 desktop app (Windows, macOS, Linux) around the web app
 │   ├── mobile/         # Capacitor 8 Android and iOS apps around the web app
 │   ├── proxy/          # Hono BFF: chat, voice and health under /api
-│   ├── detect/         # Optional object-detection sidecar (Grounding DINO)
+│   ├── detect/         # Older Grounding DINO sidecar, superseded by the shared POST /detect service
 │   ├── vision-pro/     # Apple Vision Pro (WebSpatial) application
 │   └── vanilla-client/ # Vanilla Three.js/WebGPU/WebXR client from Web-2
 ├── snap/               # Snapcraft definition for the Linux snap
@@ -145,9 +145,9 @@ What you need installed:
 
 - **Everything:** Node 22 (CI and the checked builds; `engines` allows 20 or later) and pnpm 10.28.2, the
   version `package.json` pins. `pnpm install` once, from the root.
-- **Desktop:** Rust **1.95 or later** (`rustup update stable`). Rust 1.94.0 cannot build the macOS app on
-  macOS 27.2 with Xcode 27.2: its proc-macro libraries fail to load. If your default is older, run one
-  build with `RUSTUP_TOOLCHAIN=1.99.1`. Linux needs `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
+- **Desktop:** rustup. `apps/desktop/src-tauri/rust-toolchain.toml` pins Rust **1.99.1**, and rustup installs it
+  the first time the build runs cargo there. Rust 1.94.0 and 1.95.0 cannot build the macOS app on macOS 27.2.1
+  with Xcode 27.2: their proc-macro libraries fail to load. Linux needs `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
   `librsvg2-dev`, `libssl-dev` and, for the rpm, `rpm` (build on Ubuntu 22.04 to run on later releases). Windows installs
   WebView2 itself when it is missing.
 - **iOS:** Xcode on a Mac. The project uses Swift Package Manager, so there is no CocoaPods step and no

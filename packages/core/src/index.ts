@@ -137,6 +137,7 @@ export { Tooltip } from './components/common/Tooltip'
 export { OnboardingOverlay } from './components/common/OnboardingOverlay'
 export { connectionTargetFor } from './services/connection/connectionHealth'
 export type { ConnectionTarget } from './services/connection/connectionHealth'
+export { useRememberedConnection } from './services/connection/useRememberedConnection'
 
 // Components - Control
 export { ControlOverlay } from './components/control/ControlOverlay'

@@ -3,7 +3,8 @@ import mkcert from 'vite-plugin-mkcert';
 
 /**
  * Dev server proxies (override targets via .env — see .env.example):
- *   /ws  → Grounding DINO detection server (WebSocket)
+ *   /detect, /health → the shared detection service, POST /detect (Companion-Scan's Grounding DINO)
+ *   /ws  → the older bundled Grounding DINO server (WebSocket), for a ws:// detectionUrl
  *   /v1  → any OpenAI-compatible AI backend (chat, STT, TTS)
  *   /tts → plain Piper HTTP server (only used when speech.ttsMode = 'piper')
  *
@@ -13,6 +14,7 @@ import mkcert from 'vite-plugin-mkcert';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const DETECT = env.DETECT_PROXY_TARGET || 'http://localhost:8000';
+  const DETECT_HTTP = env.DETECT_HTTP_TARGET || 'http://localhost:8010';
   const AI = env.AI_PROXY_TARGET || 'http://localhost:11434';
   const TTS = env.TTS_PROXY_TARGET || 'http://localhost:5000';
 
@@ -22,6 +24,14 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 8081,
       proxy: {
+        '/detect': {
+          target: DETECT_HTTP,
+          changeOrigin: true,
+        },
+        '/health': {
+          target: DETECT_HTTP,
+          changeOrigin: true,
+        },
         '/ws': {
           target: DETECT.replace(/^http/, 'ws'),
           ws: true,

@@ -86,6 +86,16 @@ export default defineConfig({
         }
       },
       {
+        // The vanilla client's DOM-free modules (apps/vanilla-client), plain JS: the client for
+        // the shared detection service.
+        test: {
+          name: 'vanilla-node',
+          environment: 'node',
+          globals: true,
+          include: ['apps/vanilla-client/src/**/*.node.test.js']
+        }
+      },
+      {
         // Repo tooling under scripts/ — plain .mjs, run by the build rather than
         // imported by the app, so it has no TypeScript project of its own.
         test: {

@@ -97,6 +97,36 @@ async function waitForRenderedSpeech(page: Page) {
   )
 }
 
+/** What `__harness.debugActions()` reports about the animation mixer (apps/web/src/harness/AvatarHarness.tsx). */
+type MixerWindow = {
+  __harness?: {
+    debugActions(): {
+      current: string | null
+      transitioning: boolean
+      queue: number
+      live: Array<{ name: string; w: number; t: number; run: boolean }>
+    }
+  }
+}
+
+/**
+ * Wait until the startup greet and the idle it queues have settled: the idle playing, nothing
+ * queued, no crossfade. A fixed 4 s used to stand in for this. Under software rendering the greet
+ * outlasted it (beta-red and a loaded Mac, 2026-11-25), and its queued idle then replaced the clip
+ * a test had just started.
+ */
+async function waitForSettledIdle(page: Page) {
+  await page.waitForTimeout(4_000) // the greet starts after the avatar loads; give it the time it always had
+  await page.waitForFunction(
+    () => {
+      const actions = (window as unknown as MixerWindow).__harness?.debugActions()
+      return actions?.current === 'idle-stable' && actions.queue === 0 && !actions.transitioning
+    },
+    undefined,
+    { timeout: 30_000, polling: 100 }
+  )
+}
+
 test.describe('Avatar Visual & Animation Matrix', () => {
   test('Roster agreement: AvatarOptions matches harness list', async ({ page }) => {
     const errors = await waitForHarness(page, AVATAR_KEYS[0])
@@ -111,7 +141,7 @@ test.describe('Avatar Visual & Animation Matrix', () => {
 
   test('Finite body gestures finish before the queued idle takes over', async ({ page }) => {
     await waitForHarness(page, 'Greg')
-    await page.waitForTimeout(4_000) // let the startup greet and its queued idle settle
+    await waitForSettledIdle(page)
 
     await page.evaluate(() => {
       window.__harness?.playAnimation('Waving', { loopCount: 1, blendTime: 250 })
@@ -133,12 +163,20 @@ test.describe('Avatar Visual & Animation Matrix', () => {
 
   test('Avatar state changes do not rebuild the active mixer action', async ({ page }) => {
     await waitForHarness(page, 'Greg')
-    await page.waitForTimeout(4_000) // let the startup greet and its queued idle settle
+    await waitForSettledIdle(page)
 
     await page.evaluate(() => {
       window.__harness?.playAnimation('Clapping', { loopCount: Infinity, blendTime: 250 })
     })
-    await page.waitForTimeout(700)
+    // Until the clip is current and has run a little, rather than a fixed 700 ms.
+    await page.waitForFunction(
+      () => {
+        const actions = (window as unknown as MixerWindow).__harness?.debugActions()
+        return actions?.current === 'Clapping' && (actions.live.find((action) => action.name === 'Clapping')?.t ?? 0) > 0.2
+      },
+      undefined,
+      { timeout: 15_000, polling: 100 }
+    )
     const before = await page.evaluate(() => window.__harness?.debugActions())
     const beforeTime = before?.live.find((action) => action.name === 'Clapping')?.t ?? 0
     expect(before?.current).toBe('Clapping')
