@@ -7,8 +7,8 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "npm run notices && tauri dev",
-    "build": "npm run icons && npm run notices && tauri build",
-    "build:debug": "npm run icons && npm run notices && tauri build --debug",
+    "build": "npm run notices && tauri build",
+    "build:debug": "npm run notices && tauri build --debug",
     "test:native": "node --test tests/*.test.mjs",
     "icons": "tauri icon \"../web/public/icons/icon-512.png\" --output src-tauri/icons",
     "notices": "node ../../scripts/third-party-notices.mjs --parts web,assets,desktop --out src-tauri/notices"

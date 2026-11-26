@@ -10,6 +10,8 @@ const pkg = JSON.parse(await readFile(path.join(here, '../package.json'), 'utf8'
 const cargoToml = await readFile(path.join(here, '../src-tauri/Cargo.toml'), 'utf8');
 const cargoLock = await readFile(path.join(here, '../src-tauri/Cargo.lock'), 'utf8');
 const mainRs = await readFile(path.join(here, '../src-tauri/src/main.rs'), 'utf8');
+const toolchainToml = await readFile(path.join(here, '../src-tauri/rust-toolchain.toml'), 'utf8');
+const releaseWorkflow = await readFile(path.join(here, '../../../.github/workflows/native-release.yml'), 'utf8');
 
 test('Avatar desktop loads its bundled web app and not the hosted website', () => {
   assert.equal(config.productName, 'Avatar Companion');
@@ -63,10 +65,27 @@ test('the opener plugin is tauri-plugin-opener 2.7.3 in Cargo.toml and Cargo.loc
   assert.deepEqual(locked, ['2.7.3']);
 });
 
-test('desktop build generates all required platform icons', () => {
+test('desktop builds bundle the committed icons and leave them alone', () => {
   assert.deepEqual(config.bundle.icon, ['icons/32x32.png', 'icons/128x128.png', 'icons/128x128@2x.png', 'icons/icon.icns', 'icons/icon.ico']);
+  // `tauri icon` regenerates them on request only. Run inside every build, it rewrote seven
+  // tracked files with re-sampled pixels each time, and the release workflow, which calls
+  // `tauri build` directly, shipped the committed ones anyway.
   assert.match(pkg.scripts.icons, /^tauri icon /);
-  assert.match(pkg.scripts.build, /^npm run icons && npm run notices && tauri build$/);
+  assert.equal(pkg.scripts.build, 'npm run notices && tauri build');
+  assert.equal(pkg.scripts['build:debug'], 'npm run notices && tauri build --debug');
+});
+
+test('the desktop crate pins Rust 1.95 or later, which builds on macOS 27.2', () => {
+  const channel = toolchainToml.match(/^channel = "([^"]+)"$/m)?.[1];
+  assert.ok(channel, 'rust-toolchain.toml names no channel');
+  const [major, minor] = channel.split('.').map(Number);
+  assert.ok(major > 1 || (major === 1 && minor >= 95), `channel ${channel} is older than 1.95`);
+});
+
+test('the release workflow gives the pinned toolchain the macOS cross targets', () => {
+  // Targets added to stable alone are not seen by cargo in src-tauri, which uses the pinned one.
+  assert.match(releaseWorkflow, /rustup toolchain install "\$pinned"/);
+  assert.match(releaseWorkflow, /rustup target add --toolchain "\$pinned" \$RUST_TARGETS/);
 });
 
 test('desktop bundles carry the third-party notices and the licence', () => {

@@ -291,8 +291,12 @@ jobs:
           set -euo pipefail
           rustup toolchain install stable --profile minimal
           rustup default stable
-          if [ -n "$RUST_TARGETS" ]; then rustup target add $RUST_TARGETS; fi
-          rustc --version
+          # The desktop crate pins its Rust in $TAURI_DIR/rust-toolchain.toml, and tauri build runs
+          # cargo there, so install that toolchain and give it the cross targets, not just stable.
+          pinned="$(sed -n 's/^channel = "\(.*\)"$/\1/p' "$TAURI_DIR/rust-toolchain.toml")"
+          rustup toolchain install "$pinned" --profile minimal
+          if [ -n "$RUST_TARGETS" ]; then rustup target add --toolchain "$pinned" $RUST_TARGETS; fi
+          rustc +"$pinned" --version
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

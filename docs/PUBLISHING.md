@@ -72,7 +72,7 @@ Not prepared: Chocolatey, Flatpak and the AUR.
 ### macOS
 
 `pnpm --filter @ci-avatar/desktop build` produces `Avatar Companion.app` and the dmg under
-`apps/desktop/src-tauri/target/release/bundle/` (Rust 1.95 or later: see the README). Add
+`apps/desktop/src-tauri/target/release/bundle/` (with the Rust that `src-tauri/rust-toolchain.toml` pins). Add
 `--target universal-apple-darwin` for the build that runs on Apple silicon and Intel, as CI does. Then
 `apps/desktop/scripts/desktop-notarize.sh "<path to the .app>"` signs, notarizes and staples it. Run
 it with `--check` first. It never uploads to a store and never prints a credential.

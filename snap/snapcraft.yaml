@@ -65,6 +65,8 @@ parts:
     override-build: |
       set -eux
       rustup default stable
+      # The desktop build runs cargo in apps/desktop/src-tauri, which pins its Rust in rust-toolchain.toml.
+      rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"$/\1/p' apps/desktop/src-tauri/rust-toolchain.toml)" --profile minimal
       # The node snap's global folder is read-only, so pnpm runs through npx, at the version
       # package.json pins (scripts/snap-config.test.mjs keeps the two in step).
       pnpm() { npx --yes pnpm@10.28.2 "$@"; }
