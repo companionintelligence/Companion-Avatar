@@ -1,8 +1,9 @@
 /**
  * Local text-to-speech (TTS mode 'local'): VITS voices through @diffusionstudio/vits-web, in a worker of its
- * own. ttsService.ts starts it and posts one message per sentence: `{ id, text, voice }`. The worker answers
- * `{ id, audio }`, with the WAV as an ArrayBuffer, or `{ id, error }`. `voice` is a Piper voice id; one that
- * vits-web does not have is replaced by DEFAULT_VITS_VOICE, with a warning (vitsVoice.ts).
+ * own. ttsService.ts starts it and posts one message per sentence: `{ id, text, voice }`. The worker answers each
+ * one once, with `{ id, audio }` (the WAV as an ArrayBuffer) or `{ id, error }`, and sends `{ id, progress }`
+ * while the voice downloads (vitsMessages.ts). `voice` is a Piper voice id; one that vits-web does not have is
+ * replaced by DEFAULT_VITS_VOICE, with a warning (vitsVoice.ts).
  *
  * The worker used to be a string made into a blob: URL that imported vits-web from a CDN. Now Vite bundles
  * vits-web (1.0.3, the version that URL named) and the onnxruntime-web it pins (1.18.0) into this worker, and
@@ -19,37 +20,39 @@
  * 18.7 MB). The phonemizer is espeak-ng, under GPL-3.0, so serving it ourselves is a licensing decision too,
  * and it has not been made.
  */
-import { PATH_MAP, predict, type VoiceId } from '@diffusionstudio/vits-web'
+import { PATH_MAP, predict, type Progress, type VoiceId } from '@diffusionstudio/vits-web'
 
+import { PROGRESS_INTERVAL_MS, type VitsReply, type VitsRequest } from './vitsMessages'
 import { createVitsVoiceChooser } from './vitsVoice'
-
-interface SpeakRequest {
-  id: number
-  text?: string
-  voice?: string
-}
 
 // PATH_MAP is vits-web's own table of the voices predict() can load, keyed by voice id.
 const chooseVoice = createVitsVoiceChooser(PATH_MAP)
 
-self.addEventListener('message', async (e: MessageEvent<SpeakRequest>) => {
+const reply = (message: VitsReply) => self.postMessage(message)
+
+/** Passes the voice's download progress on, at most once per PROGRESS_INTERVAL_MS, so the page can tell slow from stuck. */
+function progressNotes(id: number): (progress: Progress) => void {
+  let last = -Infinity
+  return ({ loaded, total }) => {
+    const now = Date.now()
+    if (now - last < PROGRESS_INTERVAL_MS) return
+    last = now
+    reply({ id, progress: { loaded, total } })
+  }
+}
+
+self.addEventListener('message', async (e: MessageEvent<VitsRequest>) => {
   const id = e.data.id
   const text = e.data.text || 'please supply some text'
   const voiceId = chooseVoice(e.data.voice) as VoiceId
   console.log('TTS Worker received message:', { id, text, voiceId })
-  predict({ text, voiceId }).then((audio) => {
-    new Promise<ArrayBuffer>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as ArrayBuffer)
-      reader.onerror = () => reject(reader.error)
-      reader.readAsArrayBuffer(audio)
-    })
-      .then((audio) => {
-        self.postMessage({ audio, id })
-      })
-      .catch((error) => {
-        console.error('TTS Worker Error:', error)
-        self.postMessage({ error: error.message, id })
-      })
-  })
+  try {
+    const wav = await predict({ text, voiceId }, progressNotes(id))
+    reply({ id, audio: await wav.arrayBuffer() })
+  } catch (error) {
+    // predict() rejects when a download fails ("Failed to fetch") or when what it fetched is unusable, such as
+    // a 404 page in place of a voice's config. Unanswered, the page would wait for this sentence for good.
+    console.error('TTS Worker Error:', error)
+    reply({ id, error: error instanceof Error ? error.message : String(error) })
+  }
 })

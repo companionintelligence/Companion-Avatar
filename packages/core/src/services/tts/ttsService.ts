@@ -9,11 +9,15 @@ import { mark as markLatency } from '../telemetry/latency'
 import { cleanText } from './textUtils'
 import { createSyntheticSpeechWav, syntheticSpeechDuration, syntheticWordTimings } from './syntheticSpeech'
 import { type TTSConfig, type WhisperData, defaultTTSConfig, voiceFor } from './ttsConfig'
+import { LOCAL_TTS_SILENCE_MS, type VitsReply, type VitsRequest } from './vitsMessages'
 import { apiUrl } from '../../config/apiBase'
 
 // Local TTS (vits-web) runs in a worker. Vite bundles vits.worker.ts with vits-web, and the browser loads it
 // from the app's own origin.
 const createTTSWorker = (): Worker => new Worker(new URL('./vits.worker.ts', import.meta.url), { type: 'module' })
+
+/** Why a local request ended when a barge-in or unmount ended the worker: not a failure, so not logged as one. */
+const LOCAL_TTS_STOPPED = 'LOCAL_TTS_STOPPED'
 
 declare global {
   interface Window {
@@ -79,6 +83,9 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
   const messageQueue = useRef<QueuedMessage[]>([])
   const nextExpectedId = useRef(0)
   const workerRef = useRef<Worker | null>(null)
+  // The local (VITS) requests still waiting, by message id: the worker each one is in, and a function that gives
+  // the sentence up. Ending the worker calls them all, so none waits for a worker that is gone.
+  const localRequestsRef = useRef(new Map<number, { worker: Worker; giveUp: () => void }>())
   // Barge-in support. `activeSourceRef`/`activeContextRef` track the audio that is
   // actually playing right now so stopSpeaking can cut it off mid-utterance (H4);
   // clearing the queue alone never interrupted the current sound. `generationRef`
@@ -222,41 +229,74 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
     []
   )
 
-  // Generate audio using local worker
+  // Generate audio using local worker. Several sentences are in the worker at once, so each one takes only the
+  // answer with its own id. Any message from the worker shows it is still working; after LOCAL_TTS_SILENCE_MS
+  // with none, the sentence is given up so the queue can move on (vitsMessages.ts says why that can happen).
   const generateLocalAudio = useCallback(
     async (message: QueuedMessage) => {
       return new Promise<void>((resolve, reject) => {
         const worker = getOrCreateWorker()
+        let silence: ReturnType<typeof setTimeout> | undefined
 
-        const handleWorkerMessage = (event: MessageEvent) => {
-          const { audio, id, error } = event.data
-          if (error) {
-            reject(new Error(error))
-            return
-          }
-          if (id === message.id) {
-            message.audio = audio
-            worker.removeEventListener('message', handleWorkerMessage)
-            worker.removeEventListener('error', handleWorkerError)
-            resolve()
-          }
-        }
-
-        const handleWorkerError = (error: ErrorEvent) => {
+        const stop = () => {
+          clearTimeout(silence)
+          localRequestsRef.current.delete(message.id)
           worker.removeEventListener('message', handleWorkerMessage)
           worker.removeEventListener('error', handleWorkerError)
-          reject(new Error(`Worker Error: ${error.message}`))
+          // A worker that failed takes no new sentences (fail, below); end it once its last one is done.
+          const busy = [...localRequestsRef.current.values()].some((request) => request.worker === worker)
+          if (worker !== workerRef.current && !busy) worker.terminate()
         }
+
+        // A failure can leave the worker unable to speak again: onnxruntime keeps a failed start ("previous call
+        // to 'initWasm()' failed", measured with its .wasm blocked), and a predict() that never ends stays in it.
+        // So the next sentence starts a new worker, and this one finishes what else it has.
+        const fail = (error: Error) => {
+          if (workerRef.current === worker) workerRef.current = null
+          stop()
+          reject(error)
+        }
+
+        const waitForWorker = () => {
+          clearTimeout(silence)
+          silence = setTimeout(
+            () => fail(new Error(`Local TTS: the worker sent nothing for ${LOCAL_TTS_SILENCE_MS / 1000} s`)),
+            LOCAL_TTS_SILENCE_MS
+          )
+        }
+
+        const handleWorkerMessage = (event: MessageEvent<VitsReply>) => {
+          const reply = event.data
+          if (reply.id !== message.id || 'progress' in reply) {
+            // Another sentence's answer, or download progress: the worker is alive, so keep waiting.
+            waitForWorker()
+            return
+          }
+          if ('error' in reply) {
+            fail(new Error(`Local TTS: ${reply.error}`))
+            return
+          }
+          stop()
+          message.audio = reply.audio
+          resolve()
+        }
+
+        const handleWorkerError = (error: ErrorEvent) => fail(new Error(`Worker Error: ${error.message}`))
 
         worker.addEventListener('message', handleWorkerMessage)
         worker.addEventListener('error', handleWorkerError)
+        localRequestsRef.current.set(message.id, {
+          worker,
+          giveUp: () => {
+            stop()
+            reject(new Error(LOCAL_TTS_STOPPED))
+          }
+        })
+        waitForWorker()
 
         // A Piper voice id. The worker swaps one vits-web does not have for its default (vitsVoice.ts).
-        worker.postMessage({
-          id: message.id,
-          text: message.text,
-          voice
-        })
+        const request: VitsRequest = { id: message.id, text: message.text, voice }
+        worker.postMessage(request)
       })
     },
     [getOrCreateWorker, voice]
@@ -419,8 +459,9 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       } catch (error) {
         const errMessage = error instanceof Error ? error.message : 'Unknown error'
         // The unreachable-server case is already warned about once; don't spam
-        // the console for every queued message.
-        if (errMessage !== 'POCKET_TTS_UNREACHABLE') {
+        // the console for every queued message. A local request given up by a
+        // barge-in is not an error either.
+        if (errMessage !== 'POCKET_TTS_UNREACHABLE' && errMessage !== LOCAL_TTS_STOPPED) {
           console.error(`Error generating audio for message ${message.id}:`, error)
         }
         message.status = 'error'
@@ -703,11 +744,12 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       }
     }
 
-    // Terminate worker if it exists
+    // Terminate worker if it exists, and give up the sentences it was making
     if (workerRef.current) {
       workerRef.current.terminate()
       workerRef.current = null
     }
+    for (const request of [...localRequestsRef.current.values()]) request.giveUp()
 
     // Clear the queue and resync the expected-id cursor to the next id that will be
     // assigned, so a fresh speak() right after a barge-in still matches and plays (C1).
@@ -736,10 +778,12 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
 
   // Cleanup worker on unmount
   useEffect(() => {
+    const localRequests = localRequestsRef.current
     return () => {
       if (workerRef.current) {
         workerRef.current.terminate()
       }
+      for (const request of [...localRequests.values()]) request.giveUp()
     }
   }, [])
 
