@@ -20,7 +20,7 @@
     "@types/three": "^0.182.0",
     "eslint": "^9.39.2",
     "typescript": "^5.8.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.12"
   },
   "peerDependencies": {
     "three": "^0.182.0"
