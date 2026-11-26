@@ -8,7 +8,7 @@ import { mark as markLatency } from '../telemetry/latency'
 
 import { cleanText } from './textUtils'
 import { createSyntheticSpeechWav, syntheticSpeechDuration, syntheticWordTimings } from './syntheticSpeech'
-import { type TTSConfig, type WhisperData, defaultTTSConfig } from './ttsConfig'
+import { type TTSConfig, type WhisperData, defaultTTSConfig, voiceFor } from './ttsConfig'
 import { apiUrl } from '../../config/apiBase'
 
 // Local TTS (vits-web) runs in a worker. Vite bundles vits.worker.ts with vits-web, and the browser loads it
@@ -70,6 +70,9 @@ let globalId = 0
 export const useTTSService = (options: TTSServiceOptions = {}) => {
   const { config: configPartial = {}, onSpeechStart, onSpeechEnd } = options
   const config = useMemo(() => ({ ...defaultTTSConfig, ...configPartial }), [configPartial])
+  // The configured voice, or else the default of the engine in config.mode. A string, so the callbacks
+  // that read it keep their identity across renders.
+  const voice = voiceFor(config)
   const [revision, setRevision] = useState(0)
   const bumpRevision = useCallback(() => setRevision((value) => value + 1), [])
   const isProcessing = useRef(false)
@@ -248,14 +251,15 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
         worker.addEventListener('message', handleWorkerMessage)
         worker.addEventListener('error', handleWorkerError)
 
+        // A Piper voice id. The worker swaps one vits-web does not have for its default (vitsVoice.ts).
         worker.postMessage({
           id: message.id,
           text: message.text,
-          voice: config.voice
+          voice
         })
       })
     },
-    [getOrCreateWorker, config.voice]
+    [getOrCreateWorker, voice]
   )
 
   // Generate audio via the BFF (`remote` mode → same-origin POST /api/tts).
@@ -274,7 +278,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
 
       const requestBody = {
         text: message.text,
-        voice: config.voice,
+        voice,
         format: 'mp3'
       }
 
@@ -292,7 +296,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       // body; the stream still lets the first bytes leave the upstream early.
       message.audio = await response.arrayBuffer()
     },
-    [config.url, config.voice]
+    [config.url, voice]
   )
 
   /**
@@ -310,7 +314,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       const response = await fetch(apiUrl('/api/tts/timed'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: message.text, voice: config.voice, format: 'wav' })
+        body: JSON.stringify({ text: message.text, voice, format: 'wav' })
       })
 
       if (response.status === 501) {
@@ -332,7 +336,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       message.audio = bytes.buffer
       message.timings = payload.timings
     },
-    [config.voice]
+    [voice]
   )
 
   // Generate audio using Pocket TTS server
@@ -504,8 +508,8 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
 
               // Parse voice gender from config and select appropriate voice
               const voices = cachedVoicesRef.current.length > 0 ? cachedVoicesRef.current : speechSynthesis.getVoices()
-              const isMale = config.voice.toLowerCase().includes('male')
-              const isFemale = config.voice.toLowerCase().includes('female')
+              const isMale = voice.toLowerCase().includes('male')
+              const isFemale = voice.toLowerCase().includes('female')
 
               const findVoiceByLang = (lang: string, isMale?: boolean, name?: string) => {
                 let filtered = voices.filter(voice => voice.lang === lang)
@@ -614,6 +618,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
     config.pitch,
     config.volume,
     config.mode,
+    voice,
     onSpeechStart,
     playAudioBuffer,
     onSpeechEnd,
@@ -717,7 +722,7 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
     bumpRevision()
   }, [bumpRevision, onSpeechEnd])
 
-  // Keep the voice list warm so the first utterance can honour config.voice.
+  // Keep the voice list warm so the first utterance can honour the voice.
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
     const refresh = () => {

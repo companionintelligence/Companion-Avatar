@@ -1,6 +1,9 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { TTSConfig } from './ttsConfig'
+import { DEFAULT_VITS_VOICE } from './vitsVoice'
+
 /**
  * Barge-in / interruption coverage for the TTS queue.
  *
@@ -104,6 +107,33 @@ class MockAudioContext {
   }
 }
 
+// ---- Worker mock (the VITS engine, mode 'local') --------------------------
+
+interface SpeakRequest {
+  id: number
+  text: string
+  voice?: string
+}
+
+/** Records what the hook posts and answers each message with audio, the way vits.worker.ts does. */
+class MockWorker {
+  static posted: SpeakRequest[] = []
+  private listeners = new Map<string, Array<(event: { data: unknown }) => void>>()
+  addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+  }
+  removeEventListener(type: string, listener: (event: { data: unknown }) => void) {
+    this.listeners.set(type, (this.listeners.get(type) ?? []).filter((l) => l !== listener))
+  }
+  postMessage(request: SpeakRequest) {
+    MockWorker.posted.push(request)
+    setTimeout(() => {
+      for (const listener of this.listeners.get('message') ?? []) listener({ data: { id: request.id, audio: new ArrayBuffer(8) } })
+    }, 0)
+  }
+  terminate() {}
+}
+
 // Drain all pending microtasks by crossing a macrotask boundary.
 async function flush() {
   await act(async () => {
@@ -135,6 +165,8 @@ beforeEach(async () => {
 
   globalThis.AudioContext = MockAudioContext as unknown as typeof AudioContext
   globalThis.fetch = vi.fn(async () => mockFetchResponse()) as unknown as typeof fetch
+  MockWorker.posted = []
+  globalThis.Worker = MockWorker as unknown as typeof Worker
 
   // Fresh module → module-global id counter resets to 0.
   vi.resetModules()
@@ -321,4 +353,47 @@ describe('TTS queue ids', () => {
       expect(silentId).toBeNull()
     }
   )
+})
+
+describe('the voice each engine is asked for', () => {
+  // A local or Pocket message is generated first; the queue looks again every 100 ms until it is ready.
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    })
+  }
+
+  async function speakOnce(config: Partial<TTSConfig>) {
+    const { result } = renderHook(() => useTTSService({ config }))
+    await act(async () => {
+      await result.current.actions.speak('hello there')
+    })
+    await settle()
+  }
+
+  const sentInit = () => vi.mocked(globalThis.fetch).mock.calls[0]?.[1] as RequestInit | undefined
+
+  it('asks the VITS worker for a Piper voice by default, and plays what it answers', async () => {
+    await speakOnce({ mode: 'local' })
+    // It used to be sent 'marius', which vits-web has no model for, and the worker never answered.
+    expect(MockWorker.posted).toEqual([{ id: 0, text: 'hello there', voice: DEFAULT_VITS_VOICE }])
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+  })
+
+  it('passes a configured voice to the VITS worker as given', async () => {
+    await speakOnce({ mode: 'local', voice: 'en_US-amy-medium' })
+    expect(MockWorker.posted.map((request) => request.voice)).toEqual(['en_US-amy-medium'])
+  })
+
+  it('still sends remote mode marius by default', async () => {
+    await speakOnce({ mode: 'remote' })
+    expect(JSON.parse(String(sentInit()?.body))).toMatchObject({ text: 'hello there', voice: 'marius' })
+  })
+
+  it('still sends Pocket TTS its own voice, marius by default', async () => {
+    await speakOnce({ mode: 'pocket' })
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe('http://localhost:8000/tts')
+    expect((sentInit()?.body as FormData).get('voice_url')).toBe('marius')
+    expect(MockWorker.posted).toEqual([])
+  })
 })

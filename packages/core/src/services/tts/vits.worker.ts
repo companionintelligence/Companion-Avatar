@@ -1,7 +1,8 @@
 /**
  * Local text-to-speech (TTS mode 'local'): VITS voices through @diffusionstudio/vits-web, in a worker of its
  * own. ttsService.ts starts it and posts one message per sentence: `{ id, text, voice }`. The worker answers
- * `{ id, audio }`, with the WAV as an ArrayBuffer, or `{ id, error }`.
+ * `{ id, audio }`, with the WAV as an ArrayBuffer, or `{ id, error }`. `voice` is a Piper voice id; one that
+ * vits-web does not have is replaced by DEFAULT_VITS_VOICE, with a warning (vitsVoice.ts).
  *
  * The worker used to be a string made into a blob: URL that imported vits-web from a CDN. Now Vite bundles
  * vits-web (1.0.3, the version that URL named) and the onnxruntime-web it pins (1.18.0) into this worker, and
@@ -18,7 +19,9 @@
  * 18.7 MB). The phonemizer is espeak-ng, under GPL-3.0, so serving it ourselves is a licensing decision too,
  * and it has not been made.
  */
-import { predict, type VoiceId } from '@diffusionstudio/vits-web'
+import { PATH_MAP, predict, type VoiceId } from '@diffusionstudio/vits-web'
+
+import { createVitsVoiceChooser } from './vitsVoice'
 
 interface SpeakRequest {
   id: number
@@ -26,10 +29,13 @@ interface SpeakRequest {
   voice?: string
 }
 
+// PATH_MAP is vits-web's own table of the voices predict() can load, keyed by voice id.
+const chooseVoice = createVitsVoiceChooser(PATH_MAP)
+
 self.addEventListener('message', async (e: MessageEvent<SpeakRequest>) => {
   const id = e.data.id
   const text = e.data.text || 'please supply some text'
-  const voiceId = (e.data.voice || 'en_GB-hfc_male-medium') as VoiceId
+  const voiceId = chooseVoice(e.data.voice) as VoiceId
   console.log('TTS Worker received message:', { id, text, voiceId })
   predict({ text, voiceId }).then((audio) => {
     new Promise<ArrayBuffer>((resolve, reject) => {
