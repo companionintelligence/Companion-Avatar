@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSimpleStore } from '@hexafield/simple-store/react'
 import { MonitorCog, Server, Settings as SettingsIcon, SlidersHorizontal, UserRound } from 'lucide-react'
 import { resolveAvatarSource } from '@ci-avatar/engine'
@@ -18,6 +18,7 @@ import { loadRuntimeConfig } from '../../config/runtimeConfig'
 import { AppConfigState } from '../../app/appConfig'
 import { useHasWebGPU } from '../../utils/useHasWebGPU'
 import { useXRLayout } from '../../utils/useXRLayout'
+import { useVisibleViewportInsets } from '../../utils/useVisibleViewportInsets'
 import { AvatarOptions } from '../scene/avatar/AvatarOptions'
 import { CC0_AVATAR_SOURCES } from '../scene/avatar/cc0Avatars'
 import { AvatarState } from '../scene/avatar/avatarState'
@@ -131,6 +132,10 @@ const FIELD_MAP: Record<LLMProvider, { urlKey?: keyof LLMConfig; modelKey?: keyo
 
 export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified', onActivationStateChange }: SettingsPanelProps) => {
   const { isXR } = useXRLayout()
+  // The rows of the overlay that the keyboard, or an iOS visual viewport left short after it,
+  // hides. The overlay pads them away so the card, its footer included, fits what is visible.
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const hiddenRows = useVisibleViewportInsets(overlayRef, isOpen)
   // Phone-width card: the footer has room for two buttons and a short link, not
   // a sentence. Matches the isMobile breakpoint used across the overlay.
   const isNarrow = typeof window !== 'undefined' && window.innerWidth <= 768
@@ -252,12 +257,19 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
 
   return (
     <div
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label="Connection settings"
       style={{
         position: 'absolute',
         inset: 0,
+        // Centre the card in the visible part only (see useVisibleViewportInsets). With
+        // border-box, the card's `maxHeight: calc(100% - 2rem)` is then measured against
+        // that part too, so Save and Cancel stay on screen.
+        boxSizing: 'border-box',
+        paddingTop: hiddenRows?.top ?? 0,
+        paddingBottom: hiddenRows?.bottom ?? 0,
         zIndex: 1300,
         display: 'flex',
         alignItems: 'center',

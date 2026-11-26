@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { SettingsPanel } from './SettingsPanel'
@@ -122,5 +122,82 @@ describe('SettingsPanel layout', () => {
     // The address fields also ask for the URL keyboard, with its slash and dot keys.
     expect(screen.getByLabelText('Proxy URL')).toHaveAttribute('inputmode', 'url')
     expect(screen.getByLabelText('Custom avatar URL')).toHaveAttribute('inputmode', 'url')
+  })
+})
+
+/**
+ * DEVICE-QA finding 4: after a text field had focus on iOS, `visualViewport.height` stayed 88 px
+ * short of the 874 px layout, and the dialog, centred on the full layout, put Save and Cancel below
+ * what the user could see. The overlay now pads away the rows the visual viewport hides.
+ */
+describe('SettingsPanel and a visual viewport shorter than the layout', () => {
+  class FakeVisualViewport extends EventTarget {
+    height = 786
+    width = 402
+    offsetTop = 0
+    offsetLeft = 0
+    scale = 1
+  }
+
+  function layoutRect(height: number): DOMRect {
+    return { top: 0, bottom: height, left: 0, right: 402, height, width: 402, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('fits the card into the visible part, so the footer stays on screen', () => {
+    const viewport = new FakeVisualViewport()
+    vi.stubGlobal('visualViewport', viewport)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(layoutRect(874))
+
+    render(<SettingsPanel isOpen onClose={vi.fn()} />)
+    const overlay = screen.getByRole('dialog')
+
+    expect(overlay.style.boxSizing).toBe('border-box')
+    expect(overlay.style.paddingTop).toBe('0px')
+    expect(overlay.style.paddingBottom).toBe('88px')
+  })
+
+  it('follows the visual viewport: above the keyboard, then back to full height', async () => {
+    const viewport = new FakeVisualViewport()
+    viewport.height = 500
+    vi.stubGlobal('visualViewport', viewport)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(layoutRect(874))
+
+    render(<SettingsPanel isOpen onClose={vi.fn()} />)
+    const overlay = screen.getByRole('dialog')
+    expect(overlay.style.paddingBottom).toBe('374px')
+
+    viewport.height = 874
+    act(() => {
+      viewport.dispatchEvent(new Event('resize'))
+    })
+    await waitFor(() => expect(overlay.style.paddingBottom).toBe('0px'))
+  })
+
+  it('accounts for a visual viewport scrolled down the page', () => {
+    const viewport = new FakeVisualViewport()
+    viewport.offsetTop = 40
+    viewport.height = 600
+    vi.stubGlobal('visualViewport', viewport)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(layoutRect(874))
+
+    render(<SettingsPanel isOpen onClose={vi.fn()} />)
+    const overlay = screen.getByRole('dialog')
+    expect(overlay.style.paddingTop).toBe('40px')
+    expect(overlay.style.paddingBottom).toBe('234px')
+  })
+
+  it('leaves a pinch-zoomed page alone', () => {
+    const viewport = new FakeVisualViewport()
+    viewport.scale = 2
+    viewport.height = 437
+    vi.stubGlobal('visualViewport', viewport)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(layoutRect(874))
+
+    render(<SettingsPanel isOpen onClose={vi.fn()} />)
+    expect(screen.getByRole('dialog').style.paddingBottom).toBe('0px')
   })
 })
