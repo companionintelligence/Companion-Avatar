@@ -31,16 +31,16 @@ const whisper = (over: Partial<WhisperData> = {}): WhisperData => ({
 })
 
 describe('convertToVRMTarget', () => {
-  it('maps the 14 GLB visemes down to the 5 VRM mouth shapes', () => {
+  it('maps the 14 GLB visemes down to the 5 VRM mouth shapes, and a lip closure onto none', () => {
     const glb = createEmptyVisemeTarget()
-    glb.viseme_PP = 0.5 // bilabial → ou
+    glb.viseme_PP = 0.5 // bilabial: no VRM shape closes the lips, so nothing
     glb.viseme_aa = 0.9 // → aa
     glb.viseme_kk = 0.4 // velar → ih
     glb.viseme_E = 0.7 // → ee
 
     const vrm = convertToVRMTarget(glb)
 
-    expect(vrm).toEqual({ aa: 0.9, ee: 0.7, ih: 0.4, oh: 0, ou: 0.5 })
+    expect(vrm).toEqual({ aa: 0.9, ee: 0.7, ih: 0.4, oh: 0, ou: 0 })
   })
 
   it('takes the max when several GLB visemes collapse onto one VRM viseme', () => {
@@ -327,14 +327,29 @@ describe('visemesUpdate VRM key collisions (L2)', () => {
   it('keeps the strongest of several visemes that land on one VRM key in a frame', () => {
     const state = initializeVisemeState(true)
     state.sequence = [
-      { template: { name: 'a' }, ts: [0, 100, 200], vs: { viseme_PP: [null, 0.9, 0.9] } }, // PP maps to ou
-      { template: { name: 'b' }, ts: [0, 100, 200], vs: { viseme_U: [null, 0.2, 0.2] } } // U also maps to ou, written last
+      { template: { name: 'a' }, ts: [0, 100, 200], vs: { viseme_DD: [null, 0.9, 0.9] } }, // DD maps to aa
+      { template: { name: 'b' }, ts: [0, 100, 200], vs: { viseme_aa: [null, 0.2, 0.2] } } // aa also maps to aa, written last
     ]
     vi.spyOn(performance, 'now').mockReturnValue(60)
 
     visemesUpdate(state, 1 / 60, configWith({}))
 
-    expect(targetsByKey(state).ou).toBe(0.9)
+    expect(targetsByKey(state).aa).toBe(0.9)
+  })
+})
+
+describe('visemesUpdate on a five-shape VRM: a lip closure', () => {
+  // The five VRM mouth shapes all open the mouth; none brings the lips together. PP (p, b, m) used to land on
+  // ou, so the word-timed tier pursed every VRM's lips on each p, b and m (speechSource publishes ou as
+  // `viseme:U`, which the rig shows as ou).
+  it('writes none of the five shapes for PP', () => {
+    const state = initializeVisemeState(true)
+    state.sequence = [{ template: { name: 'm' }, ts: [0, 100, 200], vs: { viseme_PP: [null, 0.9, 0.9] } }]
+    vi.spyOn(performance, 'now').mockReturnValue(100)
+
+    visemesUpdate(state, 1 / 60, configWith({}))
+
+    expect(targetsByKey(state)).toEqual({ aa: 0, ee: 0, ih: 0, oh: 0, ou: 0 })
   })
 })
 

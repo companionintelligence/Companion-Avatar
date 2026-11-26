@@ -261,6 +261,64 @@ test.describe('face compositor on a VRM head', () => {
     expect(samples, 'and stay for the frames that follow').toHaveLength(10)
     for (const value of samples) expect(value, `aa over ${samples.length} frames: ${samples.join(', ')}`).toBeGreaterThan(0.8)
   })
+
+  test('a lip closure and silence open no mouth shape, while a vowel still does', async ({ page }) => {
+    // Yuki's five mouth shapes all open the mouth, and none closes the lips. `viseme:PP` (p, b, m) used to
+    // fold onto ou, pursing the lips on every closure, and `viseme:sil` onto aa.
+    await loadHarness(page, VRM_AVATAR)
+
+    /** Hold one override key for `frames` rendered frames; the strongest weight each mouth shape reached. */
+    const peaksWhileHolding = (key: string, frames: number) =>
+      page.evaluate(
+        async ([entry, wanted]) => {
+          const harness = window.__harness!
+          harness.clearMorphs()
+          harness.setMorph({ [entry as string]: 1 })
+          const peaks: Record<string, number> = { aa: 0, ee: 0, ih: 0, oh: 0, ou: 0 }
+          let lastFrame = harness.speechDebug()?.frame ?? 0
+          let seen = 0
+          let ticks = 0
+          await new Promise<void>((resolve) => {
+            const tick = () => {
+              const frame = harness.speechDebug()?.frame ?? 0
+              if (frame !== lastFrame) {
+                lastFrame = frame
+                seen++
+                const values = harness.vrmExpressions().values ?? {}
+                for (const name of Object.keys(peaks)) peaks[name] = Math.max(peaks[name], values[name] ?? 0)
+              }
+              if (seen >= (wanted as number) || ++ticks > 5000) resolve()
+              else requestAnimationFrame(tick)
+            }
+            requestAnimationFrame(tick)
+          })
+          harness.clearMorphs()
+          return { peaks, frames: seen }
+        },
+        [key, frames] as const
+      )
+
+    // Closures first, from a face no override has touched. Nothing else at idle drives ou or aa: emotion owns
+    // no jaw, and the idle mood's smile lands on ee.
+    for (const [key, shape] of [
+      ['viseme:PP', 'ou'],
+      ['viseme:sil', 'aa']
+    ] as const) {
+      const { peaks, frames } = await peaksWhileHolding(key, 10)
+      expect(frames, `${key}: rendered frames`).toBe(10)
+      expect(peaks[shape], `${key} must not open ${shape}: ${JSON.stringify(peaks)}`).toBe(0)
+      expect(peaks.oh, `${key} must not open oh: ${JSON.stringify(peaks)}`).toBe(0)
+    }
+
+    // The same probe does see a shape when the key has one, so the zeros above are not a probe that sees nothing.
+    for (const [key, shape] of [
+      ['viseme:U', 'ou'],
+      ['viseme:aa', 'aa']
+    ] as const) {
+      const { peaks } = await peaksWhileHolding(key, 10)
+      expect(peaks[shape], `${key} must open ${shape}: ${JSON.stringify(peaks)}`).toBeGreaterThan(0.9)
+    }
+  })
 })
 
 test.describe('conversational vitality', () => {
