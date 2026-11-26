@@ -14,6 +14,12 @@ artefacts = [
   "apps/web/.storybook/main.ts",
   "apps/web/.storybook/preview.tsx",
   "apps/web/vitest.config.ts",
+  "apps/web/tsconfig.stories.json",
+  "apps/web/vitest.witness.config.ts",
+  "apps/web/.storybook-witness/main.ts",
+  "apps/web/.storybook-witness/preview.ts",
+  "apps/web/.storybook-witness/PlantedViolations.stories.tsx",
+  "scripts/check-stories.mjs",
   "packages/core/src/components/chat/ChatBubble.stories.tsx",
   "packages/core/src/components/chat/ChatInput.stories.tsx",
   "packages/core/src/components/chat/ChatPanel.stories.tsx",
@@ -35,16 +41,30 @@ covers = [
   "packages/core/src/components/debug/**",
   "packages/core/src/styles/**",
   "apps/web/.storybook/**",
+  "apps/web/.storybook-witness/**",
   "apps/web/vite.config.ts",
   "apps/web/vitest.config.ts",
+  "apps/web/vitest.witness.config.ts",
+  "apps/web/tsconfig.stories.json",
+  "scripts/check-stories.mjs",
 ]
 docs = ["TESTING.md", "docs/TESTING-PIPELINE.md"]
-requires = ["node", "storybook"]
-check = ["pnpm", "run", "--silent", "test:stories"]
-properties = ["everyStoryRenders", "everyPlayFunctionPasses", "noAxeViolations"]
+requires = ["node"]
+check = ["pnpm", "run", "--silent", "check:stories"]
+properties = ["everyStoryRenders", "everyPlayFunctionPasses", "noAxeViolations", "everyStoryTypechecks"]
 conformance = "The stories render the shipped components from packages/core/src in headless Chromium; there is no separate model."
 target = "AV-4"
-notes = "axe runs its default rules (WCAG 2.0 and 2.1 A and AA, and best practices). Storybook turns off region, and axe leaves the WCAG 2.2 target-size rule off. The WebGL scene components have no stories. The first run needs Playwright's Chromium: pnpm --filter @ci-avatar/web exec playwright install chromium."
+notes = '''
+The check, scripts/check-stories.mjs, passes only when the stories typecheck, the planted-bug witness in apps/web/.storybook-witness fails on button-name and image-alt, and Vitest reports that every story passed. To watch the witness fail: pnpm --filter @ci-avatar/web exec vitest run -c vitest.witness.config.ts.
+
+axe runs its default rules (WCAG 2.0 and 2.1 A and AA, and best practices). Storybook turns off region, and axe leaves the WCAG 2.2 target-size rule off.
+
+Gaps against AV-4. Exported DOM components with no story: ChatOverlay and ControlOverlay, and AvatarStatusPill and AvatarCaptionOverlay in components/avatar, outside covers. ConnectionStatusPanel renders only inside the SettingsPanel stories. AvatarControls, not exported and outside covers, has none. The WebGL and React Three Fiber components (components/scene, XRControlPanel, AvatarLightingRig) have no stories, and axe cannot see into a canvas. Every story runs at the addon's 1200 by 900 viewport, so the phone layouts (window.innerWidth of 768 or less) in ChatPanel, ChatInput and SettingsPanel never render.
+
+requires lists node only. The frozen install provides Storybook 10.6.9 to the package scripts, which set STORYBOOK_DISABLE_TELEMETRY=1. Agent-Sync's storybook probe looks in the repository root's node_modules/.bin, and pnpm links the storybook bin in apps/web only.
+
+The first run needs Playwright's Chromium: pnpm --filter @ci-avatar/web exec playwright install chromium.
+'''
 
 [[spec]]
 id = "conversation-machine"
@@ -72,6 +92,22 @@ covers = [
   "packages/core/src/services/cues/inlineCues.ts",
 ]
 target = "AV-2"
+notes = "The other half of AV-2, the face-rig write contract, is face-rig-write-contract."
+
+[[spec]]
+id = "face-rig-write-contract"
+title = "Face rigs: every rig holds the last weight written for a key until that key is written again"
+kind = "invariant"
+tool = "property"
+status = "planned"
+covers = [
+  "packages/engine/src/face/types.ts",
+  "packages/engine/src/face/FaceCompositor.ts",
+  "packages/engine/src/face/rigs/morphTargetRig.ts",
+  "packages/engine/src/face/rigs/vrmExpressionRig.ts",
+]
+target = "AV-2"
+notes = "A differential property test: generated write sequences go through the real FaceCompositor to both rigs, and each must keep the last weight written for a key on the avatar until that key is written again. The compositor writes a weight that holds steady only once, so a rig that drops it between writes shows as flicker. rigs.node.test.ts and vrmHeldWeights.node.test.ts check single cases today."
 
 [[spec]]
 id = "proxy-wire-contracts"
