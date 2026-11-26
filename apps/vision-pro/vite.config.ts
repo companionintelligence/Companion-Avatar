@@ -34,6 +34,12 @@ export default defineConfig({
       }
     )
   ],
+  worker: {
+    // As in apps/web/vite.config.ts: workers are bundled as ES modules, and the app starts them as module
+    // workers. The local text-to-speech worker from @ci-avatar/core (services/tts/vits.worker.ts) loads parts
+    // of vits-web with import(), which Vite's default worker format (iife) cannot split into chunks.
+    format: 'es'
+  },
   build: {
     rollupOptions: {
       // The WebSpatial JSX runtime is externalised ONLY for the spatial build,
