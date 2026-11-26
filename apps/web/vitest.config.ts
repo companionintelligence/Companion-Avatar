@@ -16,28 +16,34 @@ import viteConfig from './vite.config'
  * It extends this app's vite.config.ts, as Storybook does, so stories build with the app's React
  * plugin and dedupe. It is not one of the root vitest.config.ts projects: `pnpm test` stays on node
  * and jsdom and needs no browser.
+ *
+ * `storiesConfig` builds the config for one Storybook config folder. vitest.witness.config.ts uses it
+ * for .storybook-witness, the planted bug that `pnpm check:stories` expects to fail.
  */
-export default mergeConfig(
-  viteConfig,
-  defineConfig({
-    plugins: [storybookTest({ configDir: fileURLToPath(new URL('.storybook', import.meta.url)) })],
-    resolve: {
-      // The stories live in packages/core, which does not depend on Storybook. Storybook's own
-      // builder hands `storybook/test` to them as a preview global; under Vitest it is a real
-      // import, so resolve it from this app.
-      dedupe: ['storybook']
-    },
-    test: {
-      name: 'storybook',
-      browser: {
-        enabled: true,
-        headless: true,
-        provider: playwright(),
-        instances: [{ browser: 'chromium' }],
-        // vite.config.ts serves the dev app on every interface (`server.host: true`). The test
-        // server stays on this machine.
-        api: { host: '127.0.0.1' }
+export const storiesConfig = (configDir: string, name: string) =>
+  mergeConfig(
+    viteConfig,
+    defineConfig({
+      plugins: [storybookTest({ configDir: fileURLToPath(new URL(configDir, import.meta.url)) })],
+      resolve: {
+        // The stories live in packages/core, which does not depend on Storybook. Storybook's own
+        // builder hands `storybook/test` to them as a preview global; under Vitest it is a real
+        // import, so resolve it from this app.
+        dedupe: ['storybook']
+      },
+      test: {
+        name,
+        browser: {
+          enabled: true,
+          headless: true,
+          provider: playwright(),
+          instances: [{ browser: 'chromium' }],
+          // vite.config.ts serves the dev app on every interface (`server.host: true`). The test
+          // server stays on this machine.
+          api: { host: '127.0.0.1' }
+        }
       }
-    }
-  })
-)
+    })
+  )
+
+export default storiesConfig('.storybook', 'storybook')

@@ -34,7 +34,7 @@ process.env.HARNESS_TTS_VOLUME = String(runSpeech.volume)
 // The specs that drive the harness page, and the browser flags playwright.config.harness.ts runs them with:
 // software GL so a headless run still rasterises the scene, and no timer throttling for a page the
 // browser thinks is in the background.
-const HARNESS_SPECS = ['**/avatar-visual-matrix.spec.ts', '**/face-compositor.spec.ts']
+const HARNESS_SPECS = ['**/avatar-visual-matrix.spec.ts', '**/face-compositor.spec.ts', '**/orb-avatar.spec.ts']
 const HARNESS_BROWSER_ARGS = [
   '--use-gl=angle',
   '--use-angle=swiftshader',

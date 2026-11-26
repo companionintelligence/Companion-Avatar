@@ -3,8 +3,8 @@ import { harnessRunSpeech } from './apps/web/src/harness/speechMode'
 
 /**
  * Render suites for the avatar harness (tests/avatar-visual-matrix.spec.ts,
- * tests/face-compositor.spec.ts and tests/harness-states.spec.ts), run against a
- * production build of harness.html.
+ * tests/face-compositor.spec.ts, tests/harness-states.spec.ts and tests/orb-avatar.spec.ts),
+ * run against a production build of harness.html.
  *
  * Why not the dev server: see apps/web/vite.harness.config.ts. The dev server's lazy
  * dependency pre-bundling returns 504 while the harness loads, so the page never boots.
@@ -34,7 +34,12 @@ process.env.HARNESS_TTS_VOLUME = String(runSpeech.volume)
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/avatar-visual-matrix.spec.ts', '**/face-compositor.spec.ts', '**/harness-states.spec.ts'],
+  testMatch: [
+    '**/avatar-visual-matrix.spec.ts',
+    '**/face-compositor.spec.ts',
+    '**/harness-states.spec.ts',
+    '**/orb-avatar.spec.ts'
+  ],
 
   timeout: 300 * 1000,
   expect: { timeout: 30 * 1000 },

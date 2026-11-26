@@ -39,6 +39,9 @@ pnpm --filter @ci-avatar/web build
 
 # Every Storybook story as a test in headless Chromium, axe at error (TESTING.md)
 pnpm test:stories
+
+# The registry check: the stories typecheck, a planted axe bug must fail, then every story passes
+pnpm check:stories
 ```
 
 `pnpm test` runs Vitest across six projects (see `vitest.config.ts`); Playwright e2e is

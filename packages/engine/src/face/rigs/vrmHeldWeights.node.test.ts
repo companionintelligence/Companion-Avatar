@@ -338,7 +338,11 @@ describe('VrmExpressionFaceRig — the rig on its own', () => {
 })
 
 describe('VrmExpressionFaceRig agrees with the compositor over a long, steady-heavy run', () => {
-  /** Where each key should land, written out here so the check does not lean on the rig's own table. */
+  /**
+   * Where each key should land, written out here so the check does not lean on the rig's own table.
+   * `viseme:PP` lands nowhere: a VRM has no shape that closes the lips (vrmClosedMouth.node.test.ts). It
+   * stays in the speech pool below, so the run also checks that a closure adds nothing to any expression.
+   */
   const LANDS_ON: Readonly<Record<string, readonly [expression: string, scale: number]>> = {
     jawOpen: ['aa', 1],
     mouthSmileLeft: ['ee', 1],
@@ -348,7 +352,6 @@ describe('VrmExpressionFaceRig agrees with the compositor over a long, steady-he
     mouthPucker: ['ou', 1],
     'viseme:aa': ['aa', 1],
     'viseme:E': ['ee', 1],
-    'viseme:PP': ['ou', 1],
     'viseme:TH': ['aa', 1]
   }
 

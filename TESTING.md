@@ -63,13 +63,21 @@ one of the projects above, so `pnpm test` still needs no browser.
 - The stories sit beside their components under `packages/core/src/components`;
   `apps/web/.storybook/main.ts` finds them.
 - `parameters.a11y.test` is `'error'` in `apps/web/.storybook/preview.tsx`, so an axe
-  violation fails the story. A story that cannot pass yet sets
-  `parameters: { a11y: { test: 'todo' } }` with a comment naming the rule.
+  violation fails the story. Setting a story to `parameters: { a11y: { test: 'todo' } }` needs
+  the owner's review in the same pull request, and a comment naming the rule: at `'todo'` the
+  test passes and the run prints nothing about the violation.
 - State stories (`Default`, `Open`) have no play function. Each interaction gets its own story
   with one (`FiresOnClick`, `CollapsesOnToggle`), so the state stories look the same in
-  Storybook.
-- axe sees the DOM only. The WebGL scene has no stories.
+  Storybook. A story that changes shared state, such as a store or localStorage, puts it back
+  from `beforeEach` (see `SettingsPanel.stories.tsx`).
+- axe sees the DOM only. The WebGL scene has no stories. Every story renders at the addon's
+  1200 by 900 viewport, so the phone layouts are not tested.
 - Run the stories of one file by name: `pnpm test:stories ChatPanel`.
+- `pnpm check:stories` is the registry check (`scripts/check-stories.mjs`). It typechecks the
+  stories and the Storybook config (`apps/web/tsconfig.stories.json`), then runs the
+  planted-bug witness in `apps/web/.storybook-witness`, which must fail on `button-name` and
+  `image-alt`, then runs every story and requires Vitest to report that all of them passed. A
+  witness that passes means axe is not running at `'error'`.
 - The first run needs Playwright's Chromium:
   `pnpm --filter @ci-avatar/web exec playwright install chromium`.
 - Storybook telemetry is off: `core.disableTelemetry` in `main.ts`, and the script sets
