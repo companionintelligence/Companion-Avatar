@@ -1,0 +1,89 @@
+#:schema https://raw.githubusercontent.com/companionintelligence/CI-Agent-Sync/main/integrations/verification/specs.schema.json
+# Spec registry: the formal and executable specifications this repo keeps.
+version = 1
+repo = "companion-avatar"
+
+[[spec]]
+id = "component-stories"
+title = "Core UI components: every story renders, its play function passes, and axe finds no violation"
+kind = "component"
+tool = "storybook"
+status = "conformance"
+gate = "advisory"
+artefacts = [
+  "apps/web/.storybook/main.ts",
+  "apps/web/.storybook/preview.tsx",
+  "apps/web/vitest.config.ts",
+  "packages/core/src/components/chat/ChatBubble.stories.tsx",
+  "packages/core/src/components/chat/ChatInput.stories.tsx",
+  "packages/core/src/components/chat/ChatPanel.stories.tsx",
+  "packages/core/src/components/common/ControlButton.stories.tsx",
+  "packages/core/src/components/common/LogoOverlay.stories.tsx",
+  "packages/core/src/components/common/OnboardingOverlay.stories.tsx",
+  "packages/core/src/components/common/ToggleButton.stories.tsx",
+  "packages/core/src/components/common/Tooltip.stories.tsx",
+  "packages/core/src/components/control/ControlPanel.stories.tsx",
+  "packages/core/src/components/control/SettingsPanel.stories.tsx",
+  "packages/core/src/components/debug/BlendTimeline.stories.tsx",
+  "packages/core/src/components/debug/EmotePalette.stories.tsx",
+  "packages/core/src/components/debug/VisemeMeter.stories.tsx",
+]
+covers = [
+  "packages/core/src/components/chat/**",
+  "packages/core/src/components/common/**",
+  "packages/core/src/components/control/**",
+  "packages/core/src/components/debug/**",
+  "packages/core/src/styles/**",
+  "apps/web/.storybook/**",
+  "apps/web/vite.config.ts",
+  "apps/web/vitest.config.ts",
+]
+docs = ["TESTING.md"]
+requires = ["node", "storybook"]
+check = ["pnpm", "run", "--silent", "test:stories"]
+properties = ["everyStoryRenders", "everyPlayFunctionPasses", "noAxeViolations"]
+conformance = "The stories render the shipped components from packages/core/src in headless Chromium; there is no separate model."
+target = "AV-4"
+notes = "axe runs its default rules (WCAG 2.0 and 2.1 A and AA, and best practices). Storybook turns off region, and axe leaves the WCAG 2.2 target-size rule off. The WebGL scene components have no stories. The first run needs Playwright's Chromium: pnpm --filter @ci-avatar/web exec playwright install chromium."
+
+[[spec]]
+id = "conversation-machine"
+title = "ConversationMachine: the transition table is total, illegal events are counted, and no turn is left thinking or interrupted"
+kind = "state-machine"
+tool = "quint"
+status = "planned"
+covers = [
+  "packages/engine/src/conversation/ConversationMachine.ts",
+  "packages/core/src/services/conversation/useConversationService.ts",
+  "packages/core/src/services/llm/llmInterrupt.ts",
+]
+target = "AV-1"
+notes = "Model the TRANSITIONS table and replay its ITF traces against ConversationMachine in a node test."
+
+[[spec]]
+id = "engine-pure-functions"
+title = "Pure engine functions: history budget, breath split and inline cue parsing"
+kind = "algorithm"
+tool = "lemmascript"
+status = "planned"
+covers = [
+  "packages/core/src/services/conversation/historyBudget.ts",
+  "packages/core/src/services/llm/models/breathSplit.ts",
+  "packages/core/src/services/cues/inlineCues.ts",
+]
+target = "AV-2"
+
+[[spec]]
+id = "proxy-wire-contracts"
+title = "Proxy and agent-tool wire contracts: request bodies, stream frames and tool parameters"
+kind = "data-contract"
+tool = "effect-schema"
+status = "planned"
+covers = [
+  "apps/proxy/src/routes/chat.ts",
+  "apps/proxy/src/routes/talk.ts",
+  "apps/proxy/src/upstreams/types.ts",
+  "apps/proxy/src/upstreams/index.ts",
+  "packages/agent/src/tools/toolRegistry.ts",
+]
+target = "AV-3"
