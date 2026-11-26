@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { TTSConfig } from './ttsConfig'
+import { LOCAL_TTS_SILENCE_MS, type VitsReply, type VitsRequest } from './vitsMessages'
 import { DEFAULT_VITS_VOICE } from './vitsVoice'
 
 /**
@@ -109,29 +110,51 @@ class MockAudioContext {
 
 // ---- Worker mock (the VITS engine, mode 'local') --------------------------
 
-interface SpeakRequest {
-  id: number
-  text: string
-  voice?: string
+/** A message the mock worker sends: `data` after `after` ms, as a 'message' event, or as an 'error' event. */
+interface MockReply {
+  after: number
+  data?: VitsReply
+  error?: string
 }
 
-/** Records what the hook posts and answers each message with audio, the way vits.worker.ts does. */
+/**
+ * Records what the hook posts and answers the way vits.worker.ts does. By default each request gets its audio at
+ * once; a test sets `MockWorker.replies` to script errors, progress, answers out of order, or silence.
+ */
 class MockWorker {
-  static posted: SpeakRequest[] = []
-  private listeners = new Map<string, Array<(event: { data: unknown }) => void>>()
-  addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+  static posted: VitsRequest[] = []
+  static replies: (request: VitsRequest) => MockReply[] = (request) => [
+    { after: 0, data: { id: request.id, audio: new ArrayBuffer(8) } }
+  ]
+  static instances: MockWorker[] = []
+  terminated = false
+  private listeners = new Map<string, Array<(event: unknown) => void>>()
+  constructor() {
+    MockWorker.instances.push(this)
+  }
+  addEventListener(type: string, listener: (event: unknown) => void) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
   }
-  removeEventListener(type: string, listener: (event: { data: unknown }) => void) {
+  removeEventListener(type: string, listener: (event: unknown) => void) {
     this.listeners.set(type, (this.listeners.get(type) ?? []).filter((l) => l !== listener))
   }
-  postMessage(request: SpeakRequest) {
-    MockWorker.posted.push(request)
-    setTimeout(() => {
-      for (const listener of this.listeners.get('message') ?? []) listener({ data: { id: request.id, audio: new ArrayBuffer(8) } })
-    }, 0)
+  listenerCount() {
+    return [...this.listeners.values()].reduce((sum, list) => sum + list.length, 0)
   }
-  terminate() {}
+  postMessage(request: VitsRequest) {
+    MockWorker.posted.push(request)
+    for (const reply of MockWorker.replies(request)) {
+      setTimeout(() => {
+        if (this.terminated) return
+        const type = reply.error === undefined ? 'message' : 'error'
+        const event = reply.error === undefined ? { data: reply.data } : { message: reply.error }
+        for (const listener of [...(this.listeners.get(type) ?? [])]) listener(event)
+      }, reply.after)
+    }
+  }
+  terminate() {
+    this.terminated = true
+  }
 }
 
 // Drain all pending microtasks by crossing a macrotask boundary.
@@ -166,6 +189,8 @@ beforeEach(async () => {
   globalThis.AudioContext = MockAudioContext as unknown as typeof AudioContext
   globalThis.fetch = vi.fn(async () => mockFetchResponse()) as unknown as typeof fetch
   MockWorker.posted = []
+  MockWorker.instances = []
+  MockWorker.replies = (request) => [{ after: 0, data: { id: request.id, audio: new ArrayBuffer(8) } }]
   globalThis.Worker = MockWorker as unknown as typeof Worker
 
   // Fresh module → module-global id counter resets to 0.
@@ -174,6 +199,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -395,5 +421,135 @@ describe('the voice each engine is asked for', () => {
     expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe('http://localhost:8000/tts')
     expect((sentInit()?.body as FormData).get('voice_url')).toBe('marius')
     expect(MockWorker.posted).toEqual([])
+  })
+})
+
+describe('local TTS: every sentence ends, whatever the worker does', () => {
+  const audio = () => new ArrayBuffer(8)
+
+  async function speakAll(texts: string[]) {
+    const onSpeechStart = vi.fn()
+    const onSpeechEnd = vi.fn()
+    const hook = renderHook(() => useTTSService({ config: { mode: 'local' }, onSpeechStart, onSpeechEnd }))
+    await act(async () => {
+      for (const text of texts) await hook.result.current.actions.speak(text)
+    })
+    return { ...hook, onSpeechStart, onSpeechEnd }
+  }
+
+  // Fake timers throughout: the queue looks again every 100 ms, and the silence limit is a minute.
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('skips a sentence the worker answers with an error, and plays the next', async () => {
+    MockWorker.replies = (request) => [
+      request.id === 0
+        ? { after: 0, data: { id: 0, error: 'Failed to fetch' } }
+        : { after: 0, data: { id: request.id, audio: audio() } }
+    ]
+    const { onSpeechStart } = await speakAll(['first sentence', 'second sentence'])
+    await advance(500)
+    expect(spokenTexts(onSpeechStart)).toEqual(['second sentence'])
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+    expect(MockWorker.instances[0].listenerCount()).toBe(0)
+  })
+
+  it('gives each answer to its own sentence when they come back out of order', async () => {
+    // The second sentence fails first. That error used to reject the first sentence as well, so neither played.
+    MockWorker.replies = (request) =>
+      request.id === 0
+        ? [{ after: 50, data: { id: 0, audio: audio() } }]
+        : [{ after: 0, data: { id: 1, error: 'Failed to fetch' } }]
+    const { onSpeechStart } = await speakAll(['first sentence', 'second sentence'])
+    await advance(500)
+    expect(spokenTexts(onSpeechStart)).toEqual(['first sentence'])
+  })
+
+  it('gives a sentence up when the worker goes silent, and the queue moves on', async () => {
+    // vits-web's predict() can stay pending for good (vitsMessages.ts); the worker then never answers it.
+    MockWorker.replies = (request) => (request.id === 0 ? [] : [{ after: 0, data: { id: request.id, audio: audio() } }])
+    const { onSpeechStart } = await speakAll(['first sentence', 'second sentence'])
+    await advance(LOCAL_TTS_SILENCE_MS - 1_000)
+    expect(spokenTexts(onSpeechStart)).toEqual([])
+    await advance(2_000)
+    expect(spokenTexts(onSpeechStart)).toEqual(['second sentence'])
+    expect(vi.mocked(console.warn).mock.calls.flat().join(' ')).toContain(`the worker sent nothing for ${LOCAL_TTS_SILENCE_MS / 1000} s`)
+  })
+
+  it('keeps waiting while the worker reports download progress', async () => {
+    // A slow first download: a progress note every 30 s for three minutes, then the audio.
+    MockWorker.replies = (request) => [
+      ...[1, 2, 3, 4, 5, 6].map((n) => ({ after: n * 30_000, data: { id: request.id, progress: { loaded: n, total: 7 } } })),
+      { after: 200_000, data: { id: request.id, audio: audio() } }
+    ]
+    const { onSpeechStart } = await speakAll(['a slow first download'])
+    await advance(199_000)
+    expect(spokenTexts(onSpeechStart)).toEqual([])
+    await advance(1_500)
+    expect(spokenTexts(onSpeechStart)).toEqual(['a slow first download'])
+  })
+
+  it('ends every sentence in the worker when the worker itself fails', async () => {
+    // A blocked phonemizer download throws inside the worker, which fires its 'error' event.
+    MockWorker.replies = (request) => (request.id === 0 ? [{ after: 0, error: 'NetworkError for: piper_phonemize.data' }] : [])
+    const { onSpeechStart, onSpeechEnd } = await speakAll(['first sentence', 'second sentence'])
+    await advance(500)
+    expect(spokenTexts(onSpeechStart)).toEqual([])
+    expect(onSpeechEnd).toHaveBeenCalled()
+    expect(MockWorker.instances[0].listenerCount()).toBe(0)
+  })
+
+  it('gives the waiting sentences up quietly when a barge-in ends the worker', async () => {
+    MockWorker.replies = () => []
+    const { result } = await speakAll(['first sentence', 'second sentence'])
+    await act(async () => {
+      result.current.actions.stopSpeaking()
+    })
+    await advance(LOCAL_TTS_SILENCE_MS * 2)
+    expect(MockWorker.instances[0].terminated).toBe(true)
+    expect(MockWorker.instances[0].listenerCount()).toBe(0)
+    // Without this, each waiting sentence would log a failure a minute after the user cut in.
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).not.toContain('Error generating audio')
+  })
+
+  it('starts a new worker for the next sentence after one fails, and ends the failed one', async () => {
+    // onnxruntime keeps a failed start for the life of the worker, so the same worker would fail again.
+    MockWorker.replies = (request) => [
+      request.id === 0
+        ? { after: 0, data: { id: 0, error: "no available backend found. ERR: [cpu] Error: previous call to 'initWasm()' failed." } }
+        : { after: 0, data: { id: request.id, audio: audio() } }
+    ]
+    const { result, onSpeechStart } = await speakAll(['first sentence'])
+    await advance(500)
+    expect(MockWorker.instances).toHaveLength(1)
+    expect(MockWorker.instances[0].terminated).toBe(true)
+    await act(async () => {
+      await result.current.actions.speak('second sentence')
+    })
+    await advance(500)
+    expect(MockWorker.instances).toHaveLength(2)
+    expect(MockWorker.instances[1].terminated).toBe(false)
+    expect(spokenTexts(onSpeechStart)).toEqual(['second sentence'])
+  })
+
+  it('lets the other sentences in a failed worker finish before ending it', async () => {
+    MockWorker.replies = (request) =>
+      request.id === 0
+        ? [{ after: 0, data: { id: 0, error: 'Failed to fetch' } }]
+        : [{ after: 50, data: { id: request.id, audio: audio() } }]
+    const { onSpeechStart } = await speakAll(['first sentence', 'second sentence'])
+    await advance(20)
+    expect(MockWorker.instances[0].terminated).toBe(false)
+    await advance(500)
+    expect(spokenTexts(onSpeechStart)).toEqual(['second sentence'])
+    expect(MockWorker.instances[0].terminated).toBe(true)
+    expect(MockWorker.instances).toHaveLength(1)
   })
 })
