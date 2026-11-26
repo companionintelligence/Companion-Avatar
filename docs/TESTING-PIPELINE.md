@@ -16,7 +16,7 @@ We test that promise on two axes:
 | Layer | Tool | Runs in | What it proves | Speed |
 |------|------|--------|----------------|-------|
 | **L1 Logic** | Vitest | node/jsdom | pure state machines & mappings are correct | ms |
-| **L2 Component** | Storybook + play | jsdom/browser | UI renders, is interactive & accessible | s |
+| **L2 Component** | Storybook + play + axe | headless Chromium (Vitest browser mode) | UI renders, is interactive & accessible | s |
 | **L3 Visual** | Capture harness → **WebP** | headless Chromium + WebGL | the rig actually _moves_ (anim/viseme/emote/blend) | ~15 s/clip |
 | **L4 Scenario (E2E)** | Playwright | real app | a vertical works door-to-door | ~1 min |
 | **L5 Render matrix** | Playwright | real app | every avatar loads on every renderer | ~1 min |
@@ -149,7 +149,8 @@ not considered a passing lip-sync result.
 ## Status (v1 of this pipeline)
 
 - **L1** — 81 tests green; expanding viseme/emote/blend/integration coverage.
-- **L2** — Storybook up (chat/controls/settings/toggles); adding viseme/emote/blend panels.
+- **L2** — every story runs as a test, with axe at `error` (`pnpm test:stories`, see
+  TESTING.md). CI still only builds Storybook.
 - **L3** — harness + `gen-webp.mjs` live; hero set in `docs/visual-tests/`; the
   production decoded-audio path is covered by `speechInfo`/`audioMetrics`/`faceSnapshot`.
 - **L4** — hospitality/retail/education specs live (`tests/scenarios/*.spec.ts`, run via

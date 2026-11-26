@@ -23,6 +23,7 @@ WebXR spatial companion — immersive XR interface for CI-Server with spatial au
 pnpm install
 pnpm dev:web
 pnpm test
+pnpm test:stories
 pnpm --filter @ci-avatar/web build
 ```
 

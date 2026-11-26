@@ -38,7 +38,7 @@ covers = [
   "apps/web/vite.config.ts",
   "apps/web/vitest.config.ts",
 ]
-docs = ["TESTING.md"]
+docs = ["TESTING.md", "docs/TESTING-PIPELINE.md"]
 requires = ["node", "storybook"]
 check = ["pnpm", "run", "--silent", "test:stories"]
 properties = ["everyStoryRenders", "everyPlayFunctionPasses", "noAxeViolations"]

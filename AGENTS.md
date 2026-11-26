@@ -23,6 +23,7 @@ pnpm install         # install
 pnpm dev:web         # dev server (web SPA on :5173)
 pnpm dev:proxy       # backend proxy / BFF on :8787
 pnpm test            # test
+pnpm test:stories    # Storybook stories as browser tests, axe at error
 pnpm --filter @ci-avatar/web build   # build
 ```
 
