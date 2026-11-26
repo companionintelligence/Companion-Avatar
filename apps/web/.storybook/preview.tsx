@@ -19,8 +19,9 @@ const preview: Preview = {
       }
     },
     a11y: {
-      // An axe violation fails the story's test (pnpm test:stories). A story that cannot pass yet
-      // sets `a11y: { test: 'todo' }` itself and names the rule it is waiting on.
+      // An axe violation fails the story's test (pnpm test:stories). Setting a story to
+      // `a11y: { test: 'todo' }` needs the owner's review in the same pull request, and a comment
+      // naming the rule: at 'todo' the test passes and the run prints nothing about it.
       test: 'error'
     }
   },
