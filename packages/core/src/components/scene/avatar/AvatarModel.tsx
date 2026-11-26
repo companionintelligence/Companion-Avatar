@@ -15,6 +15,7 @@ import { AvatarOptions } from './AvatarOptions'
 import { AvatarState } from './avatarState'
 import { locateAvatarHead } from './headLocate'
 import { updateVrmFrameMotion } from './vrmFrameMotion'
+import { bindTracksToRawBones, captureBoneRests } from './vrmaRetarget'
 import { ConversationStatusState } from '../../../services/conversation/conversationStatus'
 import {
   VRMA_CLIPS,
@@ -157,6 +158,9 @@ export const useExternalAnimations = (avatarRef: React.RefObject<THREE.Object3D 
     const animations: THREE.AnimationClip[] = []
 
     if (vrm) {
+      // The rests each clip is carried over onto the real bones, read once per model (see vrmaRetarget.ts)
+      const boneRests = captureBoneRests(vrm)
+
       // Process VRMA
       stableVrmaGLTFs.forEach((gltf, index) => {
         const vrmAnimation: VRMAnimation | undefined = (gltf as { userData?: { vrmAnimations?: VRMAnimation[] } })
@@ -165,18 +169,12 @@ export const useExternalAnimations = (avatarRef: React.RefObject<THREE.Object3D 
         if (vrmAnimation && vrm) {
           const clip = createVRMAnimationClip(vrmAnimation, vrm)
           clip.name = vrmaClips[index].name
-          // Remove "Normalized_" prefix from track names
-          clip.tracks = clip.tracks.filter((track) => {
-            // Remove "Normalized_" prefix from track names
-            if (track.name.startsWith('Normalized_')) {
-              track.name = track.name.replace(/^Normalized_/, '')
-
-            }
+          // The clip is made for the normalized skeleton and the mixer drives the real bones: bind
+          // the tracks to their names and carry each rotation over its bone's rest. Neck and head
+          // tracks are dropped; the gaze service owns those.
+          clip.tracks = bindTracksToRawBones(clip.tracks, boneRests).filter((track) => {
             const lower = track.name.toLowerCase()
-            if (lower.includes('neck') || lower.includes('head')) {
-              return false
-            }
-            return true
+            return !(lower.includes('neck') || lower.includes('head'))
           })
 
           animations.push(clip)
