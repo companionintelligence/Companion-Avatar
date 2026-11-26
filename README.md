@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0a6358?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/badge/chat-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/invite/yQp9hwpzAa)
 
-<p align="center"><a href="#documentation">Documentation</a> · <a href="#install-dependencies">Get started</a> · <a href="#license">License</a> · <a href="https://docs.ci.computer/docs/reference/open-source-systems">Systems map</a></p>
+<p align="center"><a href="#documentation">Documentation</a> · <a href="#build-targets">Build targets</a> · <a href="#test-with-a-backend">Test with a backend</a> · <a href="#publishing">Publishing</a> · <a href="#license">License</a> · <a href="https://docs.ci.computer/docs/reference/open-source-systems">Systems map</a></p>
 
 <p align="center">
   <a href="#docker--ci-hub"><img src="https://img.shields.io/badge/Run%20with%20Docker-Run%20with%20Docker-0a6358?style=for-the-badge&logo=docker&logoColor=white" alt="Run with Docker" height="30"></a>
@@ -40,6 +40,8 @@ Embodied AI Avatar framework with WebXR and Vision Pro support.
 | [FACIAL-ANIMATION-PLAN.md](docs/FACIAL-ANIMATION-PLAN.md) | Tiered facial animation (VRM → ARKit → FACS → **MetaHuman** roadmap) |
 | [WEBSPATIAL-PLAN.md](docs/WEBSPATIAL-PLAN.md) | WebSpatial / spatial-platform support (visionOS, Android XR, Pico) |
 | [TESTING-PIPELINE.md](docs/TESTING-PIPELINE.md) | The 5-layer test strategy (unit → visual WebP → E2E) |
+| [PUBLISHING.md](docs/PUBLISHING.md) | Where each build ships (stores, Snap, Homebrew, Scoop, winget), what is ready, and what only the owner can supply |
+| [DEVICE-QA.md](docs/DEVICE-QA.md) | The 2026-11-24 run of web, desktop, iOS and Android against a backend, with its findings |
 | [operations/error-reporting.md](docs/operations/error-reporting.md) | Opt-out Sentry crash reporting — how to turn it off, what is scrubbed, and why prompts/replies can never reach it |
 | [ASSET-PIPELINE.md](docs/ASSET-PIPELINE.md) · [DEPLOYMENT.md](docs/DEPLOYMENT.md) · [DRIVE-ASSETS.md](docs/DRIVE-ASSETS.md) · [PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md) · [BUTTON-AUDIT.md](docs/BUTTON-AUDIT.md) | Asset packaging · container deployment · owned-asset inventory · product/launch plan · control-bar audit |
 
@@ -107,40 +109,176 @@ input — the minimal text-only interaction surface.
 
 ```
 ├── packages/
-│   └── core/           # Shared services, components, and utilities
+│   ├── core/           # Shared services, components, and utilities
+│   ├── engine/         # Rigs, facial animation, lip-sync, motion and conversation
+│   └── agent/          # Agent memory and tools
 ├── apps/
 │   ├── web/            # React/R3F standard web application
 │   ├── desktop/        # Tauri 2 desktop app (Windows, macOS, Linux) around the web app
 │   ├── mobile/         # Capacitor 8 Android and iOS apps around the web app
 │   ├── proxy/          # Hono BFF: chat, voice and health under /api
+│   ├── detect/         # Optional object-detection sidecar (Grounding DINO)
 │   ├── vision-pro/     # Apple Vision Pro (WebSpatial) application
 │   └── vanilla-client/ # Vanilla Three.js/WebGPU/WebXR client from Web-2
+├── snap/               # Snapcraft definition for the Linux snap
+├── scripts/            # Build, packaging and release tooling (package-manifests.mjs, notices, checks)
+└── docs/               # Architecture, pipelines, deployment, publishing and device QA
 ```
 
-## Development
+## Build targets
+
+One web app, packaged for each platform. Every native app carries its own copy of the web build, so the
+web build comes first.
+
+| Target | Stack | Build it | Output | Where it stands |
+| --- | --- | --- | --- | --- |
+| Web | Vite, React, three.js | `pnpm --filter @ci-avatar/web build` | `apps/web/dist` | Deployed at [avatar.ci.computer](https://avatar.ci.computer) |
+| Docker | nginx, and the proxy | [Docker / CI Hub](#docker--ci-hub) | Two images on GHCR | Published |
+| macOS, Windows, Linux | Tauri 2 | `pnpm --filter @ci-avatar/desktop build` | dmg, NSIS and MSI, deb and rpm | v0.2.0 pre-release |
+| iOS | Capacitor 8, Xcode | `cap sync ios`, then `xcodebuild` | `.app`, `.xcarchive`, `.ipa` | Runs on the simulator and an iPhone; the App Store build is the owner's |
+| Android | Capacitor 8, Gradle | `cap sync android`, then `./gradlew` | `.apk`, `.aab` | v0.2.0 pre-release APK |
+| Snap | snapcraft | [`snap-build.yml`](.github/workflows/snap-build.yml) | `.snap` | Written, not built yet |
+| Vision Pro | WebSpatial | `pnpm dev:vision` | | Needs visionOS |
+| Vanilla client | Three.js, WebXR | `pnpm build:vanilla` | | |
+
+What you need installed:
+
+- **Everything:** Node 22 (CI and the checked builds; `engines` allows 20 or later) and pnpm 10.28.2, the
+  version `package.json` pins. `pnpm install` once, from the root.
+- **Desktop:** Rust **1.95 or later** (`rustup update stable`). Rust 1.94.0 cannot build the macOS app on
+  macOS 27.2 with Xcode 27.2: its proc-macro libraries fail to load. If your default is older, run one
+  build with `RUSTUP_TOOLCHAIN=1.99.1`. Linux needs `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
+  `librsvg2-dev`, `libssl-dev` and, for the rpm, `rpm` (build on Ubuntu 22.04 to run on later releases). Windows installs
+  WebView2 itself when it is missing.
+- **iOS:** Xcode on a Mac. The project uses Swift Package Manager, so there is no CocoaPods step and no
+  workspace: build with `-project`.
+- **Android:** JDK 21, the Android SDK with platform 36 and build-tools 35.0.0, and `ANDROID_HOME` set.
+
+### Web
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Start web dev server
-pnpm dev:web
-
-# Start Vision Pro dev server
-pnpm dev:vision
-
-# Start the vanilla WebGL/WebGPU/WebXR client
-pnpm dev:vanilla
-
-# Build only the vanilla client
-pnpm build:vanilla
+pnpm dev:web                           # http://localhost:5173, with /api forwarded to the proxy on :8787
+pnpm dev:proxy                         # the backend proxy (see Test with a backend)
+pnpm --filter @ci-avatar/web build     # the production build, into apps/web/dist
+pnpm --filter @ci-avatar/web preview   # serve that build, with /api forwarded the same way
+pnpm lint && pnpm test                 # the checks CI runs; pnpm test:e2e runs Playwright
 ```
 
-## Desktop and Android apps
+The build first packs the shared `assets/` into `apps/*/public`, and fails if a credential would be
+published in `dist` (`scripts/check-dist-secrets.mjs`). Deployment is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+### Desktop: macOS, Windows, Linux
+
+```bash
+pnpm --filter @ci-avatar/desktop dev      # a Tauri window on the dev server
+pnpm --filter @ci-avatar/desktop build    # this OS's installers; the web build runs first
+```
+
+For a specific bundle, or the universal macOS app that CI builds, run Tauri directly after the notices step
+(the bundle carries them as resources):
+
+```bash
+cd apps/desktop && pnpm run notices
+pnpm exec tauri build --target universal-apple-darwin --bundles app,dmg   # macOS; rustup target add aarch64-apple-darwin x86_64-apple-darwin
+pnpm exec tauri build --bundles nsis,msi                                   # Windows
+pnpm exec tauri build --bundles deb,rpm                                    # Linux
+```
+
+Everything lands under `apps/desktop/src-tauri/target/release/bundle/`. The macOS app is ad-hoc signed and not
+notarized, and the Windows installers are not code-signed; signing is in [docs/PUBLISHING.md](docs/PUBLISHING.md).
+More in [apps/desktop/README.md](apps/desktop/README.md).
+
+### iOS
+
+```bash
+pnpm --filter @ci-avatar/web build
+pnpm --filter @ci-avatar/mobile exec cap sync ios
+cd apps/mobile/ios/App
+
+# the simulator
+xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/App.app
+xcrun simctl launch booted com.companionintelligence.avatar
+
+# a paired, unlocked iPhone with Developer Mode on (automatic signing, your own team)
+xcodebuild -project App.xcodeproj -scheme App -configuration Debug -destination 'id=<device UDID>' \
+  -derivedDataPath build -allowProvisioningUpdates DEVELOPMENT_TEAM=<team ID> build
+xcrun devicectl device install app --device <device UDID> build/Build/Products/Debug-iphoneos/App.app
+```
+
+`pnpm --filter @ci-avatar/mobile exec cap open ios` opens the project in Xcode instead. A store build is
+`APPLE_TEAM_ID=<team ID> apps/mobile/scripts/ios-archive.sh` (or `--unsigned` for a compile-only archive that
+needs no team), which never uploads. The bundle ID `com.companionintelligence.avatar` is the live App Store
+app's. Details and the App Store checklist: [apps/mobile/STORE-PREP-IOS.md](apps/mobile/STORE-PREP-IOS.md).
+
+### Android
+
+```bash
+pnpm --filter @ci-avatar/web build
+pnpm --filter @ci-avatar/mobile exec cap sync android
+cd apps/mobile/android
+./gradlew assembleDebug                   # app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.companionintelligence.avatar/.MainActivity
+```
+
+A release is `./gradlew assembleRelease` for the APK, or `apps/mobile/scripts/android-release.sh` for the APK
+and the `.aab` Google Play takes, with a 16 KB page-alignment check. Both sign only when `KEYSTORE_PATH`,
+`KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` are all set (or `android/keystore.properties` exists); otherwise
+they are unsigned. Run `pnpm --filter @ci-avatar/mobile run notices` first so the APK carries the third-party
+notices. Details: [apps/mobile/README.md](apps/mobile/README.md) and
+[apps/mobile/STORE-PREP-ANDROID.md](apps/mobile/STORE-PREP-ANDROID.md).
+
+### Vision Pro and the vanilla client
+
+```bash
+pnpm dev:vision      # Apple Vision Pro (WebSpatial) dev server
+pnpm dev:vanilla     # the vanilla WebGL/WebGPU/WebXR client
+pnpm build:vanilla   # build only the vanilla client
+```
+
+## Test with a backend
+
+The web build and the apps run without a server, in demo mode. To test the whole chain, run a model and the
+proxy, then point each target at the proxy:
+
+```bash
+ollama pull gemma3:1b && ollama serve   # skip if Ollama already runs
+APP_UPSTREAM=ollama APP_OLLAMA_URL=http://127.0.0.1:11434 APP_OLLAMA_MODEL=gemma3:1b pnpm dev:proxy
+curl http://127.0.0.1:8787/api/health
+```
+
+The health check says `"status":"degraded"` until a text-to-speech server is running; chat works regardless.
+
+| Target | What to set in Settings (LLM provider **Proxy**) | Also needed |
+| --- | --- | --- |
+| Web, dev or preview | Nothing: the default `/api/chat` reaches the proxy | |
+| macOS, Windows, Linux app | `http://127.0.0.1:8787/api/chat` (plain HTTP is allowed to the same computer) | Nothing: the proxy allows the desktop origins |
+| Android app, emulator or phone | An `https://` URL | Nothing: the proxy allows `https://localhost` |
+| iOS app, simulator or phone | An `https://` URL | `APP_ALLOWED_ORIGINS=capacitor://localhost` on the proxy. Without it the check fails with "Load failed" |
+
+The phones and emulators need HTTPS. The simplest private route is [Tailscale Serve](https://tailscale.com/kb/1242/tailscale-serve),
+which reaches only your tailnet:
+
+```bash
+tailscale serve --bg --https=18787 http://127.0.0.1:8787
+# use https://<machine>.<tailnet>.ts.net:18787/api/chat; to stop: tailscale serve --https=18787 off
+```
+
+Any HTTPS tunnel works, but the proxy has no authentication, so do not leave one open on the internet.
+
+In each app: **Settings**, choose **Proxy (recommended)**, enter the URL, **Check connection**, **Save**, then
+send a message. A good result reads **Session: Chat-only**, chat reachable, voice unavailable. The app does not
+talk to a backend until that check has passed in the current session, and after a restart it asks for the check
+again. The 2026-11-24 run of all four targets this way, with its findings, is in
+[docs/DEVICE-QA.md](docs/DEVICE-QA.md).
+
+## Desktop and mobile apps
 
 The web app also ships as a desktop app for Windows, macOS and Linux ([`apps/desktop`](apps/desktop/README.md), Tauri 2)
-and an Android app ([`apps/mobile`](apps/mobile/README.md), Capacitor 8). Each carries its own copy of the web build,
-every avatar, animation and prop in `assets/`, `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt`. Neither loads the website.
+and as iPhone and Android apps ([`apps/mobile`](apps/mobile/README.md), Capacitor 8). Each carries its own copy of the web
+build, every avatar, animation and prop in `assets/`, `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt`. None loads the website.
 
 **Download** a pre-release from [Releases](https://github.com/companionintelligence/Companion-Avatar/releases),
 starting with v0.2.0:
@@ -187,19 +325,7 @@ On-device models in the desktop app (the WebLLM engine loads from a CDN that the
 blocks); and a switch to the 1970s datacenter diorama, whose props are bundled but which only the website's
 `?env=datacenter-1970s` opens.
 
-**Build them yourself:**
-
-```bash
-pnpm install
-pnpm --filter @ci-avatar/desktop build             # this OS's installers, after the web build and the notices
-pnpm --filter @ci-avatar/web build                 # the Android app bundles this build
-pnpm --filter @ci-avatar/mobile exec cap sync android
-pnpm --filter @ci-avatar/mobile run notices        # THIRD-PARTY-NOTICES.txt into the APK's assets
-cd apps/mobile/android && ./gradlew assembleRelease
-```
-
-The release APK is signed only when `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` are all
-set (or `android/keystore.properties` exists); otherwise it is unsigned.
+**Build them yourself:** see [Build targets](#build-targets). iOS has no download: build it with Xcode, as described there.
 
 **Publish a pre-release** with the manual [`native-release.yml`](.github/workflows/native-release.yml) workflow:
 
@@ -211,8 +337,30 @@ gh workflow run native-release.yml --repo companionintelligence/Companion-Avatar
 `android_signing` is `auto` (the release keystore when its secrets are set, else a throwaway key), `keystore`,
 `throwaway` or `skip`. The keystore secrets are `AVATAR_KEYSTORE_BASE64`, `AVATAR_KEYSTORE_PASSWORD`,
 `AVATAR_KEY_ALIAS` and `AVATAR_KEY_PASSWORD`. The tag must be new and match the apps' version (0.2.0 in
-`tauri.conf.json`, `Cargo.toml`, the `package.json` files and the Android `versionName`). iOS builds stay with the
-owner ([apps/mobile/STORE-PREP-IOS.md](apps/mobile/STORE-PREP-IOS.md)).
+`tauri.conf.json`, `Cargo.toml`, the `package.json` files and the Android `versionName`). The workflow does not build
+iOS: see [iOS](#ios) and [docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+## Publishing
+
+Nothing here signs with a release key or uploads to a store by itself: each step is a person running a command or a
+workflow with their own credentials. The runbook, with what every channel still needs from the owner, is
+[docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+| Channel | Artifact | How | Where it stands |
+| --- | --- | --- | --- |
+| GitHub pre-release | Every desktop installer and the APK | [`native-release.yml`](.github/workflows/native-release.yml) | v0.2.0 published, unsigned |
+| macOS | dmg, Developer ID signed and notarized | `apps/desktop/scripts/desktop-notarize.sh` | Script ready; needs Apple notary credentials |
+| iOS | App Store and TestFlight build | `apps/mobile/scripts/ios-archive.sh` | Archive builds; needs team, profile and listing |
+| Android | `.aab` for Google Play | `apps/mobile/scripts/android-release.sh` | Builds and signs; needs the upload key and listing |
+| Windows | Signed NSIS and MSI | `apps/desktop/scripts/desktop-build-windows.mjs` | Needs a code-signing certificate |
+| Snap | `avatar-companion` | [`snap-build.yml`](.github/workflows/snap-build.yml) | Written, not built yet; needs `snapcraft register` |
+| Homebrew, Scoop, winget | Cask, manifest, YAML | [`package-manifests.yml`](.github/workflows/package-manifests.yml) | Generated and validated; the cask waits for notarization |
+
+```bash
+gh workflow run package-manifests.yml --repo companionintelligence/Companion-Avatar --ref main -f tag=v0.2.0
+```
+
+The files are in the run's artifact, to review and copy into the tap, the bucket and a `winget-pkgs` pull request.
 
 ## Docker / CI Hub
 

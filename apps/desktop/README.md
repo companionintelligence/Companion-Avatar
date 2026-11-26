@@ -18,6 +18,9 @@ pnpm --filter @ci-avatar/desktop build:debug   # debug build, quicker
 pnpm --filter @ci-avatar/desktop test:native   # config tests
 ```
 
+Build with Rust 1.95 or later. Rust 1.94.0 fails on macOS 27.2 with Xcode 27.2: the proc-macro libraries it links
+are rejected by the system loader. Run `rustup update stable`, or set `RUSTUP_TOOLCHAIN=1.99.1` for one build.
+
 `build` regenerates the icons from `apps/web/public/icons/icon-512.png`, writes the third-party
 notices (`npm run notices`, below) and runs `tauri build`, whose `beforeBuildCommand` builds the web
 app first. It produces, under `src-tauri/target/release/bundle/`:
@@ -86,4 +89,5 @@ a universal ad-hoc signed macOS dmg, Linux deb and rpm) with the Android APK and
 pre-release. It starts each app for 15 seconds as a smoke test. See the root `README.md`.
 
 Store and signed distribution (Developer ID and notarization with `scripts/desktop-notarize.sh`,
-Authenticode with `scripts/desktop-build-windows.mjs`, the Mac App Store) are in `STORE-PREP.md`.
+Authenticode with `scripts/desktop-build-windows.mjs`, the Mac App Store) are in `STORE-PREP.md`. The Snap,
+Homebrew, Scoop and winget packaging is in [docs/PUBLISHING.md](../../docs/PUBLISHING.md).

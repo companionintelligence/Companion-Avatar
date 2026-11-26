@@ -99,4 +99,28 @@ describe('SettingsPanel layout', () => {
       })
     )
   })
+
+  /**
+   * Found on an iPhone simulator while pointing the app at a backend: iOS autocorrected the host
+   * name in the server address (`ulmer` became `ulcer`), and the field offered no clue. A server
+   * address, a model name and an avatar URL are identifiers, so the keyboard must leave them alone.
+   */
+  it('keeps the phone keyboard from capitalising or correcting server addresses and model names', async () => {
+    render(<SettingsPanel isOpen onClose={vi.fn()} />)
+    await userEvent.selectOptions(screen.getByLabelText('LLM provider'), 'proxy')
+
+    for (const field of [
+      screen.getByLabelText('Proxy URL'),
+      screen.getByLabelText('Model'),
+      screen.getByLabelText('Custom avatar URL')
+    ]) {
+      expect(field).toHaveAttribute('autocapitalize', 'off')
+      expect(field).toHaveAttribute('autocorrect', 'off')
+      expect(field).toHaveAttribute('autocomplete', 'off')
+      expect(field).toHaveAttribute('spellcheck', 'false')
+    }
+    // The address fields also ask for the URL keyboard, with its slash and dot keys.
+    expect(screen.getByLabelText('Proxy URL')).toHaveAttribute('inputmode', 'url')
+    expect(screen.getByLabelText('Custom avatar URL')).toHaveAttribute('inputmode', 'url')
+  })
 })

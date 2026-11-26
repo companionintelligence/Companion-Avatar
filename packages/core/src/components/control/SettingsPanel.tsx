@@ -23,6 +23,19 @@ import { CC0_AVATAR_SOURCES } from '../scene/avatar/cc0Avatars'
 import { AvatarState } from '../scene/avatar/avatarState'
 import { getActiveFacialRig } from '../../services/face/faceCompositorRegistry'
 
+/**
+ * Server addresses and model names are identifiers, not prose. Without these, a phone keyboard
+ * capitalises the first letter and "corrects" what it takes for a misspelling: on iOS it turned a word
+ * in a host name, `ulmer`, into `ulcer`, and the connection check then failed with no hint why. The
+ * chat box keeps the defaults.
+ */
+const identifierInputProps = {
+  autoCapitalize: 'off',
+  autoCorrect: 'off',
+  autoComplete: 'off',
+  spellCheck: false
+} as const
+
 const AVATAR_KEYS = Object.keys(AvatarOptions)
 /** What the avatar box accepts by name: the built-in models, and CC0 avatars that are fetched when they are chosen. */
 const AVATAR_SOURCES = { ...AvatarOptions, ...CC0_AVATAR_SOURCES }
@@ -346,6 +359,8 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
             <input
               id="settings-url"
               type="text"
+              inputMode="url"
+              {...identifierInputProps}
               value={url}
               placeholder={provider === 'proxy' ? '/api/chat' : 'http://localhost:11434'}
               onChange={(e) => setUrl(e.target.value)}
@@ -362,6 +377,7 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
             <input
               id="settings-model"
               type="text"
+              {...identifierInputProps}
               list="settings-model-options"
               value={model}
               placeholder={String(defaultLLMConfig[fields.modelKey] ?? '')}
@@ -472,6 +488,8 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
           </label>
           <input
             id="settings-avatar-url"
+            inputMode="url"
+            {...identifierInputProps}
             style={inputStyle}
             placeholder="https://models.readyplayer.me/….glb  ·  or a .vrm URL"
             value={avatarUrlDraft}
