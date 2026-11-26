@@ -86,9 +86,10 @@ async function fetchOllamaHealth(target: ConnectionTarget): Promise<ConnectionHe
 
 /** On-device models (WebLLM) need no server, only a WebGPU adapter. */
 async function checkOnDevice(target: ConnectionTarget): Promise<ConnectionHealth> {
-  // The engine runs in a worker that imports it from a CDN (esm.run, in llmService.ts), and the
-  // desktop app's content security policy blocks that import. Say so instead of passing a check
-  // that the first message would then fail.
+  // The engine's worker used to import it from a CDN, which the desktop app's content security policy
+  // blocked. It is bundled with the app now (llm/webllm.worker.ts), which that policy allows, but no
+  // model has been run in the desktop app since, so this keeps saying it does not run there until one
+  // has, instead of passing a check that the first message might then fail.
   if (isDesktopShell()) {
     return {
       status: 'degraded',

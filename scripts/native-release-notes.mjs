@@ -84,9 +84,10 @@ export function releaseNotes({ files, tag, version, commit, repo, server = 'http
   )
   line('- Spoken replies, with the system voice, where the app\'s WebView offers speech synthesis.')
   line(
-    '- **On-device** (Settings) is meant to run a small language model with WebGPU. It loads its engine from a CDN ' +
-      '(esm.run) and the model from huggingface.co, and it does not work in the desktop app, whose content security ' +
-      'policy blocks that engine. In the Android app it needs a WebView with WebGPU; it has not been tried there.'
+    '- **On-device** (Settings) is meant to run a small language model with WebGPU. Its engine ships with the app; the ' +
+      'model downloads from huggingface.co (and its compiled library from raw.githubusercontent.com) the first time. ' +
+      'It is switched off in the desktop app, where it has not been run yet. In the Android app it needs a WebView ' +
+      'with WebGPU; it has not been tried there.'
   )
   line()
   line('What they do not do in this release:')

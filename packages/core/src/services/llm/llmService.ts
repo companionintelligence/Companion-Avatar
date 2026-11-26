@@ -53,13 +53,6 @@ function pickConservativeLocalModel(cfg: LLMConfig): string {
   return cfg.mlc_model || 'Llama-3.2-3B-Instruct-q4f16_1-MLC'
 }
 
-// Worker string for WebLLM
-const workerString = `
-import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
-const handler = new webllm.WebWorkerMLCEngineHandler();
-self.onmessage = (msg) => { handler.onmessage(msg); };
-`
-
 type LLMServiceProps = {
   config?: Partial<LLMConfig>
   onStatus?: (update: LLMStatusUpdate) => void
@@ -154,10 +147,9 @@ export const useLLMService = ({ config: configPartial = {}, onStatus, onResponse
         })
       }
 
-      // Use web worker approach for better performance
-      const worker = new Worker(URL.createObjectURL(new Blob([workerString], { type: 'text/javascript' })), {
-        type: 'module'
-      })
+      // The engine runs in a worker. Vite bundles webllm.worker.ts with @mlc-ai/web-llm, and the browser
+      // loads it from the app's own origin.
+      const worker = new Worker(new URL('./webllm.worker.ts', import.meta.url), { type: 'module' })
 
       const webllm = await import('@mlc-ai/web-llm')
       const engine = await webllm.CreateWebWorkerMLCEngine(worker, safeModel, { initProgressCallback })

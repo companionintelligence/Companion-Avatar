@@ -321,8 +321,8 @@ picked, and chat goes only there.
 
 **Not in the apps yet:** WebXR and immersive mode (the system WebViews do not offer it); server-side voices, speech
 recognition and live talk (they need a server address built into the app, and the release builds have none);
-On-device models in the desktop app (the WebLLM engine loads from a CDN that the app's content security policy
-blocks); and a switch to the 1970s datacenter diorama, whose props are bundled but which only the website's
+On-device models in the desktop app (switched off: the WebLLM engine now ships with the app, but no model has been
+run in the desktop app yet); and a switch to the 1970s datacenter diorama, whose props are bundled but which only the website's
 `?env=datacenter-1970s` opens.
 
 **Build them yourself:** see [Build targets](#build-targets). iOS has no download: build it with Xcode, as described there.
