@@ -17,6 +17,8 @@ pnpm dev:web          # Vite dev server; /api is proxied to :8787 (see vite.conf
 
 The proxy reads its upstream from env at runtime: `APP_UPSTREAM` (`ollama` | `openai` |
 `ci-server` | `aiavatarkit`), `APP_OLLAMA_URL` (default `http://host.docker.internal:11434`), `APP_OLLAMA_MODEL`,
+`APP_OLLAMA_NUM_CTX` (the context window each chat asks Ollama for, as `options.num_ctx`; unset leaves the server's
+`OLLAMA_CONTEXT_LENGTH`, and 4096 keeps a small model from crowding others off a shared GPU),
 `APP_OPENAI_URL` / `APP_OPENAI_API_KEY` / `APP_OPENAI_MODEL`, `APP_AIAVATARKIT_URL` / `APP_AIAVATARKIT_TOKEN`,
 `PORT` (8787). The AIAvatarKit and CC0 avatar notes are in [integrations.md](integrations.md).
 

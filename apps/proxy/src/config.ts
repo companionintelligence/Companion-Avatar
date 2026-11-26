@@ -15,6 +15,13 @@ export interface ResolvedConfig {
   upstream: UpstreamKind
   ollamaUrl: string
   ollamaModel: string
+  /**
+   * The context window to ask Ollama for with every chat (`options.num_ctx`, env APP_OLLAMA_NUM_CTX), or null to leave
+   * the server's own default. A server with a large OLLAMA_CONTEXT_LENGTH loads each model that large: at 32768 on a
+   * 10 GB card, the model this proxy uses and the Unity avatar's llava:7b and reply-check model evict one another, and
+   * a reply waits for a model load. 4096 keeps a small model small.
+   */
+  ollamaNumCtx: number | null
   openaiUrl: string
   openaiApiKey: string
   openaiModel: string
@@ -129,6 +136,22 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '')
 }
 
+/** Smallest and largest APP_OLLAMA_NUM_CTX accepted: a typo should stop the proxy, not reach the model. */
+export const OLLAMA_NUM_CTX_MIN = 512
+export const OLLAMA_NUM_CTX_MAX = 1_048_576
+
+function parseOllamaNumCtx(raw: string | undefined): number | null {
+  const value = raw?.trim()
+  if (!value) return null
+  const tokens = Number(value)
+  if (!Number.isInteger(tokens) || tokens < OLLAMA_NUM_CTX_MIN || tokens > OLLAMA_NUM_CTX_MAX) {
+    throw new Error(
+      `Invalid APP_OLLAMA_NUM_CTX "${raw}" (expected a whole number of tokens from ${OLLAMA_NUM_CTX_MIN} to ${OLLAMA_NUM_CTX_MAX})`
+    )
+  }
+  return tokens
+}
+
 export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedConfig {
   const upstream = (env.APP_UPSTREAM ?? 'ollama') as UpstreamKind
   if (!VALID_UPSTREAMS.includes(upstream)) {
@@ -145,6 +168,8 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     throw new Error('APP_AIAVATARKIT_TOKEN is required when APP_UPSTREAM=aiavatarkit')
   }
 
+  const ollamaNumCtx = parseOllamaNumCtx(env.APP_OLLAMA_NUM_CTX)
+
   const ttsUpstream = (env.APP_TTS_UPSTREAM ?? 'cosyvoice') as TtsUpstreamKind
   if (!VALID_TTS_UPSTREAMS.includes(ttsUpstream)) {
     throw new Error(
@@ -156,6 +181,7 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     upstream,
     ollamaUrl: stripTrailingSlash(env.APP_OLLAMA_URL ?? 'http://host.docker.internal:11434'),
     ollamaModel: env.APP_OLLAMA_MODEL ?? 'gemma3:1b',
+    ollamaNumCtx,
     openaiUrl: stripTrailingSlash(env.APP_OPENAI_URL ?? 'https://api.openai.com/v1'),
     openaiApiKey,
     openaiModel: env.APP_OPENAI_MODEL ?? 'gpt-4o-mini',
