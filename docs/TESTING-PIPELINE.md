@@ -141,7 +141,8 @@ not considered a passing lip-sync result.
 
 | Trigger | Layers |
 |---|---|
-| Every commit (pre-push / CI `test.yml`) | **L1 + L2** (`pnpm test`, `build-storybook`) |
+| Every commit (CI `test.yml`) | **L1** (`pnpm test`), and `build-storybook` as a smoke build |
+| Every commit, before you push | **+ L2** (`pnpm test:stories`; `pnpm check:stories` adds the stories typecheck and the planted-bug witness) |
 | Touching a rig/service/avatar | **+ L3** curated clips for the affected pillar |
 | Adding/re-rigging an avatar | **+ L5** render matrix + L3 `*-lipsync`/`*-gesture` |
 | Release candidate | **all five**, incl. L4 verticals + vision-pro build smoke |
