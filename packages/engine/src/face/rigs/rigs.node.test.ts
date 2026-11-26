@@ -375,11 +375,11 @@ describe('VrmExpressionFaceRig', () => {
   })
 
   it('folds an explicit viseme id down when only the standard set exists', () => {
-    const { manager, setValue } = vrm(['ou'])
+    const { manager, setValue } = vrm(['ee'])
     const rig = new VrmExpressionFaceRig(manager)
-    rig.write('viseme:PP', 0.7)
+    rig.write('viseme:SS', 0.7)
     rig.commit()
-    expect(setValue).toHaveBeenCalledWith('ou', 0.7)
+    expect(setValue).toHaveBeenCalledWith('ee', 0.7)
   })
 
   it('survives an expression the VRM advertises but cannot drive', () => {

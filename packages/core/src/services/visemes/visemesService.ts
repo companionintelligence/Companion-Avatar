@@ -5,7 +5,13 @@ import { applyCurve, defaultVisemeConfig, type VisemeConfig } from './config/vis
 import type { VisemeSequenceItem, VisemeState, VisemeTarget, VRMVisemeTarget, WhisperData } from './visemeTypes'
 import { createEmptyVisemeTarget, createEmptyVRMVisemeTarget } from './visemeTypes'
 
-const OCULUS_TO_VRM_MAPPING: Record<keyof VisemeTarget, keyof VRMVisemeTarget> = {
+/**
+ * Oculus viseme → one of the five VRM mouth shapes. `null` is "no shape": all five open the mouth and none
+ * brings the lips together, so the bilabial closure writes nothing and the mouth closes as the vowel before it
+ * decays. Mapping it to `ou` pursed a VRM's lips on every p, b and m. The engine's VRM rig makes the same
+ * choice for `viseme:PP` (OCULUS_TO_VRM in packages/engine/src/face/rigs/vrmExpressionRig.ts).
+ */
+const OCULUS_TO_VRM_MAPPING: Record<keyof VisemeTarget, keyof VRMVisemeTarget | null> = {
   // Vowels - direct mapping where possible
   viseme_aa: 'aa', // open back vowel → aa
   viseme_E: 'ee', // mid front vowel → ee
@@ -14,7 +20,7 @@ const OCULUS_TO_VRM_MAPPING: Record<keyof VisemeTarget, keyof VRMVisemeTarget> =
   viseme_U: 'ou', // close back vowel → ou
 
   // Consonants - map to closest vowel shape
-  viseme_PP: 'ou', // bilabial (closed lips) → ou (rounded)
+  viseme_PP: null, // bilabial (p, b, m): the lips meet, and no VRM shape does that
   viseme_FF: 'ee', // labiodental → ee (spread lips)
   viseme_TH: 'aa', // dental → aa (open)
   viseme_DD: 'aa', // alveolar → aa (open)

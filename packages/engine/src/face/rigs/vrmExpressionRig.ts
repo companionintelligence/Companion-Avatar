@@ -51,11 +51,19 @@ const ARKIT_TO_VRM: Readonly<Record<string, readonly [VrmStandard, number]>> = {
   eyeLookOutRight: ['lookRight', 1]
 }
 
-/** Oculus viseme id → VRM mouth shape, for the `viseme:` fast path. */
-const OCULUS_TO_VRM: Readonly<Record<string, VrmStandard>> = {
+/**
+ * Oculus viseme id → VRM mouth shape, for the `viseme:` fast path.
+ *
+ * `null` is "no shape". The five standard mouth shapes all open the mouth, and none brings the lips
+ * together, so the closure `PP` (p, b, m) and silence `sil` get no route: they write nothing, and the mouth
+ * closes as the visemes either side of them release. Folding them onto the nearest vowel was wrong both
+ * ways: `PP` onto `ou` pursed the lips on every p, b and m, and `sil` onto `aa` opened the mouth.
+ */
+const OCULUS_TO_VRM: Readonly<Record<string, VrmStandard | null>> = {
   aa: 'aa', E: 'ee', I: 'ih', O: 'oh', U: 'ou',
-  PP: 'ou', FF: 'ee', TH: 'aa', DD: 'aa', kk: 'ih',
-  CH: 'ee', SS: 'ee', nn: 'ih', RR: 'aa', sil: 'aa'
+  FF: 'ee', TH: 'aa', DD: 'aa', kk: 'ih',
+  CH: 'ee', SS: 'ee', nn: 'ih', RR: 'aa',
+  PP: null, sil: null
 }
 
 export interface VrmExpressionManagerLike {
