@@ -14,6 +14,8 @@ import type { GLTFParser } from 'three/examples/jsm/Addons.js'
 import { AvatarOptions } from './AvatarOptions'
 import { AvatarState } from './avatarState'
 import { locateAvatarHead } from './headLocate'
+import { OrbAvatar } from './orb/OrbAvatar'
+import { isOrbAvatarSource } from './orb/orbCatalog'
 import { updateVrmFrameMotion } from './vrmFrameMotion'
 import { bindTracksToRawBones, captureBoneRests } from './vrmaRetarget'
 import { ConversationStatusState } from '../../../services/conversation/conversationStatus'
@@ -885,8 +887,24 @@ const AvatarModelMemo = memo(AvatarModelComponent)
 // morph targets, a new skeleton family (GLB vs VRM), and a fresh startup greet, so
 // keying by selectedModel re-initializes every ref/effect cleanly instead of trying
 // to mutate a live rig in place.
+//
+// A drawn avatar (an `orb:` source) has no model to load: it gets the orb, which
+// reads the same voice and conversation status and frames itself the same way.
 export const AvatarModel = (props: AvatarModelProps) => {
   const [state] = useSimpleStore(AvatarState)
+  if (isOrbAvatarSource(state.selectedModel)) {
+    return (
+      <OrbAvatar
+        key={state.selectedModel}
+        source={state.selectedModel}
+        ttsService={props.ttsService}
+        onHeadLocated={props.onHeadLocated}
+        cameraDistance={props.cameraDistance}
+        cameraTargetDrop={props.cameraTargetDrop}
+        spatialAudio={props.spatialAudio}
+      />
+    )
+  }
   return <AvatarModelMemo key={state.selectedModel} {...props} />
 }
 

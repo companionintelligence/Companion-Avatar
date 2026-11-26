@@ -92,6 +92,16 @@ export {
   type ConversationStatus
 } from './services/conversation/conversationStatus'
 export { AvatarOptions } from './components/scene/avatar/AvatarOptions'
+export {
+  GREEN_ORB_PALETTE,
+  ORB_AVATAR_OPTIONS,
+  isOrbAvatarSource,
+  orbPaletteFor,
+  type OrbPalette
+} from './components/scene/avatar/orb/orbCatalog'
+export { OrbAvatar, type OrbAvatarProps } from './components/scene/avatar/orb/OrbAvatar'
+export { getOrbSnapshot, type OrbSnapshot } from './components/scene/avatar/orb/orbDebug'
+export { OrbMotion, type OrbFrame, type OrbInput, type OrbRing } from './components/scene/avatar/orb/orbMotion'
 export { AvatarStatusPill } from './components/avatar/AvatarStatusPill'
 export type { AvatarStatusPillProps, AvatarConversationStatus } from './components/avatar/AvatarStatusPill'
 export { AvatarCaptionOverlay } from './components/avatar/AvatarCaptionOverlay'

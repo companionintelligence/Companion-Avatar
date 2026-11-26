@@ -21,6 +21,7 @@ import { useXRLayout } from '../../utils/useXRLayout'
 import { useVisibleViewportInsets } from '../../utils/useVisibleViewportInsets'
 import { AvatarOptions } from '../scene/avatar/AvatarOptions'
 import { CC0_AVATAR_SOURCES } from '../scene/avatar/cc0Avatars'
+import { ORB_AVATAR_OPTIONS } from '../scene/avatar/orb/orbCatalog'
 import { AvatarState } from '../scene/avatar/avatarState'
 import { getActiveFacialRig } from '../../services/face/faceCompositorRegistry'
 
@@ -37,9 +38,11 @@ const identifierInputProps = {
   spellCheck: false
 } as const
 
-const AVATAR_KEYS = Object.keys(AvatarOptions)
-/** What the avatar box accepts by name: the built-in models, and CC0 avatars that are fetched when they are chosen. */
-const AVATAR_SOURCES = { ...AvatarOptions, ...CC0_AVATAR_SOURCES }
+/** The avatars the Character list offers: the built-in models, then the drawn orbs. */
+const PICKER_AVATARS: Readonly<Record<string, string>> = { ...AvatarOptions, ...ORB_AVATAR_OPTIONS }
+const AVATAR_KEYS = Object.keys(PICKER_AVATARS)
+/** What the avatar box accepts by name: the Character list, and CC0 avatars that are fetched when they are chosen. */
+const AVATAR_SOURCES = { ...PICKER_AVATARS, ...CC0_AVATAR_SOURCES }
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -149,7 +152,7 @@ export const SettingsPanel = ({ isOpen, onClose, activationState = 'unverified',
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const facialRig = getActiveFacialRig()
   const avatarLabel =
-    AVATAR_KEYS.find((key) => AvatarOptions[key as keyof typeof AvatarOptions] === avatarState.selectedModel) ??
+    AVATAR_KEYS.find((key) => PICKER_AVATARS[key] === avatarState.selectedModel) ??
     'custom'
 
   const applyAvatar = useCallback((input: string) => {
