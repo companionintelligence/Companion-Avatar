@@ -52,3 +52,15 @@ export const FiresOnClick: Story = {
     await expect(args.onClick).toHaveBeenCalled()
   }
 }
+
+/** A disabled button, such as one that is busy connecting, ignores clicks. */
+export const DisabledIgnoresClick: Story = {
+  args: { disabled: true, tooltipContent: 'Unavailable' },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const button = canvas.getByRole('button', { name: 'Unavailable' })
+    await expect(button).toBeDisabled()
+    await userEvent.click(button)
+    await expect(args.onClick).not.toHaveBeenCalled()
+  }
+}

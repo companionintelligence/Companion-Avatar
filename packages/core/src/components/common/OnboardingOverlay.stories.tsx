@@ -22,3 +22,13 @@ export const EnableMicFires: Story = {
     await expect(args.onEnableMic).toHaveBeenCalled()
   }
 }
+
+/** Skip calls onSkip and never onEnableMic, so the mic stays off. */
+export const SkipFires: Story = {
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(canvas.getByRole('button', { name: 'Skip' }))
+    await expect(args.onSkip).toHaveBeenCalledTimes(1)
+    await expect(args.onEnableMic).not.toHaveBeenCalled()
+  }
+}

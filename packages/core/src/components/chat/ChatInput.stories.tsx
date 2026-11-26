@@ -58,6 +58,21 @@ const StatefulChatInput = (args: React.ComponentProps<typeof ChatInput>) => {
   )
 }
 
+/**
+ * While the mic is on, the field shows the live transcript and is read-only: typing changes
+ * neither the text nor the parent's message.
+ */
+export const IgnoresTypingWhileRecording: Story = {
+  args: { isRecording: true, sttListening: true, sttTranscript: 'remind me to' },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement)
+    const textarea = canvas.getByRole('textbox')
+    await userEvent.type(textarea, 'hello')
+    await expect(textarea).toHaveValue('remind me to')
+    await expect(args.onMessageChange).not.toHaveBeenCalled()
+  }
+}
+
 export const TypeAndSubmit: Story = {
   // Rendered via a real component rather than calling useState inside `render`,
   // which is not a component and so may not call hooks.
