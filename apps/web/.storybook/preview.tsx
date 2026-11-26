@@ -19,7 +19,9 @@ const preview: Preview = {
       }
     },
     a11y: {
-      test: 'todo'
+      // An axe violation fails the story's test (pnpm test:stories). A story that cannot pass yet
+      // sets `a11y: { test: 'todo' }` itself and names the rule it is waiting on.
+      test: 'error'
     }
   },
   decorators: [

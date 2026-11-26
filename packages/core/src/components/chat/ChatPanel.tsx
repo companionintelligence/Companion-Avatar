@@ -100,8 +100,10 @@ export const ChatPanel = ({ messages, activationState = 'unverified' }: ChatPane
           margin: '0'
         }}
       >
-        {/* Chat History Content */}
+        {/* Chat History Content. Collapsed, it is out of sight, so it is inert too: the hidden
+            history leaves the tab order and the accessibility tree. */}
         <div
+          inert={!isVisible}
           style={{
             opacity: isVisible ? 1 : 0,
             transition: 'opacity 0.3s ease',
@@ -162,8 +164,13 @@ export const ChatPanel = ({ messages, activationState = 'unverified' }: ChatPane
             </span>
           </div>
 
+          {/* The history scrolls, so it takes keyboard focus: without it a keyboard user cannot
+              scroll back (axe: scrollable-region-focusable). */}
           <div
             ref={scrollContainerRef}
+            role="region"
+            aria-label="Chat log"
+            tabIndex={0}
             style={{
               flex: 1,
               overflowY: 'auto',
