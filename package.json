@@ -26,6 +26,7 @@
     "storybook": "pnpm --filter @ci-avatar/web storybook",
     "build-storybook": "pnpm --filter @ci-avatar/web build-storybook",
     "test:stories": "pnpm --filter @ci-avatar/web test:stories",
+    "check:stories": "node scripts/check-stories.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
