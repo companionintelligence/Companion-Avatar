@@ -25,6 +25,7 @@
     "test:coverage": "vitest run --coverage",
     "storybook": "pnpm --filter @ci-avatar/web storybook",
     "build-storybook": "pnpm --filter @ci-avatar/web build-storybook",
+    "test:stories": "pnpm --filter @ci-avatar/web test:stories",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
