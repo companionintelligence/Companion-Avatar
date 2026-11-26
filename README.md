@@ -145,9 +145,9 @@ What you need installed:
 
 - **Everything:** Node 22 (CI and the checked builds; `engines` allows 20 or later) and pnpm 10.28.2, the
   version `package.json` pins. `pnpm install` once, from the root.
-- **Desktop:** rustup. `apps/desktop/src-tauri/rust-toolchain.toml` pins Rust **1.95**, and rustup installs it
-  the first time the build runs cargo there. Rust 1.94.0 cannot build the macOS app on macOS 27.2 with Xcode
-  27.2: its proc-macro libraries fail to load. Linux needs `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
+- **Desktop:** rustup. `apps/desktop/src-tauri/rust-toolchain.toml` pins Rust **1.99.1**, and rustup installs it
+  the first time the build runs cargo there. Rust 1.94.0 and 1.95.0 cannot build the macOS app on macOS 27.2.1
+  with Xcode 27.2: their proc-macro libraries fail to load. Linux needs `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
   `librsvg2-dev`, `libssl-dev` and, for the rpm, `rpm` (build on Ubuntu 22.04 to run on later releases). Windows installs
   WebView2 itself when it is missing.
 - **iOS:** Xcode on a Mac. The project uses Swift Package Manager, so there is no CocoaPods step and no

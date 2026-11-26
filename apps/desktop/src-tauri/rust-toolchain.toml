@@ -1,12 +1,13 @@
 # The Rust the desktop app builds with. rustup reads this file whenever cargo runs in this folder,
 # as `tauri build` does, and installs the toolchain on first use.
 #
-# 1.95 or later: Rust 1.94.0 cannot build the app on macOS 27.2 with Xcode 27.2, because the system
-# loader refuses the proc-macro libraries it links ("mis-aligned LINKEDIT string pool"), so serde, phf
-# and derive_more fail. 1.95 builds and loads them (docs/DEVICE-QA.md, finding 1).
+# 1.99.1: the system loader refuses the proc-macro libraries Rust 1.94.0 links on macOS 27.2 with
+# Xcode 27.2 ("mis-aligned LINKEDIT string pool"), and those 1.95.0 links on macOS 27.2.1, so phf,
+# derive_more and serde fail with "can't find crate for `phf_macros`". 1.99.1 builds and loads them on
+# both (docs/DEVICE-QA.md, finding 1).
 #
 # The release and native-build workflows and the snap install this channel by name, reading it from
 # here. RUSTUP_TOOLCHAIN overrides it for one build.
 [toolchain]
-channel = "1.95"
+channel = "1.99.1"
 profile = "minimal"

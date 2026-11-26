@@ -18,9 +18,9 @@ pnpm --filter @ci-avatar/desktop build:debug   # debug build, quicker
 pnpm --filter @ci-avatar/desktop test:native   # config tests
 ```
 
-`src-tauri/rust-toolchain.toml` pins Rust 1.95, and rustup installs it the first time cargo runs there.
-Rust 1.94.0 fails on macOS 27.2 with Xcode 27.2: the proc-macro libraries it links are rejected by the
-system loader. `RUSTUP_TOOLCHAIN=<version>` overrides the pin for one build.
+`src-tauri/rust-toolchain.toml` pins Rust 1.99.1, and rustup installs it the first time cargo runs there.
+Rust 1.94.0 and 1.95.0 fail on macOS 27.2.1 with Xcode 27.2: the proc-macro libraries they link are rejected
+by the system loader. `RUSTUP_TOOLCHAIN=<version>` overrides the pin for one build.
 
 `build` writes the third-party notices (`npm run notices`, below) and runs `tauri build`, whose
 `beforeBuildCommand` builds the web app first. The bundle icons are the committed files in

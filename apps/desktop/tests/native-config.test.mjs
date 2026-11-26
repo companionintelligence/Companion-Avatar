@@ -75,11 +75,12 @@ test('desktop builds bundle the committed icons and leave them alone', () => {
   assert.equal(pkg.scripts['build:debug'], 'npm run notices && tauri build --debug');
 });
 
-test('the desktop crate pins Rust 1.95 or later, which builds on macOS 27.2', () => {
+test('the desktop crate pins Rust 1.99.1 or later, which builds on macOS 27.2.1', () => {
   const channel = toolchainToml.match(/^channel = "([^"]+)"$/m)?.[1];
   assert.ok(channel, 'rust-toolchain.toml names no channel');
   const [major, minor] = channel.split('.').map(Number);
-  assert.ok(major > 1 || (major === 1 && minor >= 95), `channel ${channel} is older than 1.95`);
+  // 1.94.0 and 1.95.0 build proc-macro libraries the macOS 27.2.1 loader refuses (docs/DEVICE-QA.md, finding 1).
+  assert.ok(major > 1 || (major === 1 && minor >= 99), `channel ${channel} is older than 1.99`);
 });
 
 test('the release workflow gives the pinned toolchain the macOS cross targets', () => {
