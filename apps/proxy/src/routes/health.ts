@@ -35,7 +35,8 @@ healthRoutes.get('/health', async (c) => {
     tts: {
       upstream: ttsAdapter.name,
       model: cfg.ttsModel,
-      voice: cfg.ttsVoice,
+      // The voice asked for when the browser names none. Absent when the proxy asks for none and the upstream picks.
+      voice: cfg.ttsVoice || ttsAdapter.defaultVoice,
       reachable: ttsProbe.ok,
       detail: ttsProbe.detail
     }

@@ -402,7 +402,7 @@ Precedence: `localStorage` > runtime `/config.json` > build-time `VITE_LLM_*` de
 | `APP_OLLAMA_URL`     | `http://host.docker.internal:11434`  | Ollama server URL (used by the `proxy`/`ollama` providers)          |
 | `APP_LLM_MODEL`      | `gemma3:1b`                          | Model name                                                          |
 | `APP_TTS_MODE`       | `browser`                            | `browser` (speechSynthesis), `pocket`, `local`, or `remote`         |
-| `APP_TTS_VOICE`      | each mode's own                      | The voice to speak with. Unset, `local` uses the Piper voice `en_US-hfc_male-medium` and `remote` sends `marius`. `local` takes any id in vits-web's list; another name gets `en_US-hfc_male-medium` and a console warning |
+| `APP_TTS_VOICE`      | each mode's own                      | The voice to speak with. Unset, `local` uses the Piper voice `en_US-hfc_male-medium`, and `remote` and `headtts` send none, so the proxy's own `APP_TTS_VOICE` decides. `local` takes any id in vits-web's list; another name gets `en_US-hfc_male-medium` and a console warning |
 | `APP_STT_REMOTE`     | `false`                              | Route speech input to the appliance's Whisper instead of on-device  |
 
 The default `APP_TTS_MODE` is `browser` because it is the only mode that needs

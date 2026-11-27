@@ -411,9 +411,66 @@ describe('the voice each engine is asked for', () => {
     expect(MockWorker.posted.map((request) => request.voice)).toEqual(['en_US-amy-medium'])
   })
 
-  it('still sends remote mode marius by default', async () => {
+  /** Each request to the BFF, in order: its path and its JSON body. */
+  const sentToBff = () =>
+    vi.mocked(globalThis.fetch).mock.calls.map(([url, init]) => ({
+      url: String(url),
+      body: JSON.parse(String(init?.body)) as Record<string, unknown>
+    }))
+
+  /** Answers /api/tts/timed as the proxy does: audio and timings from HeadTTS, or 501 when its upstream has none. */
+  function answerTimedRoute(withTimings: boolean) {
+    vi.mocked(globalThis.fetch).mockImplementation(async (url) => {
+      if (!String(url).endsWith('/api/tts/timed')) return mockFetchResponse()
+      if (!withTimings) return mockFetchResponse(JSON.stringify({ error: 'no timings' }), { status: 501 })
+      return mockFetchResponse(
+        JSON.stringify({
+          audio: btoa('RIFF-wav-bytes'),
+          timings: { words: ['hello', 'there'], wtimes: [0, 300], wdurations: [300, 300] }
+        }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+    })
+  }
+
+  it('sends remote mode no voice by default, so the proxy picks it, and plays the answer', async () => {
     await speakOnce({ mode: 'remote' })
-    expect(JSON.parse(String(sentInit()?.body))).toMatchObject({ text: 'hello there', voice: 'marius' })
+    // It used to send 'marius', which overrode the proxy's APP_TTS_VOICE and which Kokoro servers answer 422 to.
+    expect(sentToBff()).toEqual([{ url: '/api/tts', body: { text: 'hello there', format: 'mp3' } }])
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+  })
+
+  it('sends remote mode a configured voice as given', async () => {
+    await speakOnce({ mode: 'remote', voice: 'af_heart' })
+    expect(sentToBff()).toEqual([{ url: '/api/tts', body: { text: 'hello there', voice: 'af_heart', format: 'mp3' } }])
+  })
+
+  it('sends headtts mode no voice by default, and plays the timed answer', async () => {
+    answerTimedRoute(true)
+    await speakOnce({ mode: 'headtts' })
+    expect(sentToBff()).toEqual([{ url: '/api/tts/timed', body: { text: 'hello there', format: 'wav' } }])
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+  })
+
+  it('sends no voice on the plain route either, when the upstream has no timings', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    answerTimedRoute(false)
+    await speakOnce({ mode: 'headtts' })
+    expect(sentToBff()).toEqual([
+      { url: '/api/tts/timed', body: { text: 'hello there', format: 'wav' } },
+      { url: '/api/tts', body: { text: 'hello there', format: 'mp3' } }
+    ])
+    expect(MockAudioContext.startedSources).toHaveLength(1)
+  })
+
+  it('sends headtts mode a configured voice on both routes', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    answerTimedRoute(false)
+    await speakOnce({ mode: 'headtts', voice: 'af_heart' })
+    expect(sentToBff().map(({ url, body }) => [url, body.voice])).toEqual([
+      ['/api/tts/timed', 'af_heart'],
+      ['/api/tts', 'af_heart']
+    ])
   })
 
   it('still sends Pocket TTS its own voice, marius by default', async () => {

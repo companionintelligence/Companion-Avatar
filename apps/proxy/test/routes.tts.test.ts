@@ -150,3 +150,79 @@ describe('POST /api/tts/timed', () => {
     expect((await post({ text: 'hello' })).status).toBe(502)
   })
 })
+
+/**
+ * The voice, from the browser's request to the upstream's. The browser sends none unless one is configured, so the
+ * proxy's APP_TTS_VOICE decides, or else the upstream's own default.
+ */
+describe('the voice the proxy asks its TTS upstream for', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  const speak = (path: '/api/tts' | '/api/tts/timed', body: Record<string, string>) =>
+    createApp().request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+
+  /** Stub the upstream with one answer, and return a function that gives the voice of each request it got. */
+  function upstream(answer: () => Response) {
+    const fetchMock = vi.fn(async () => answer())
+    vi.stubGlobal('fetch', fetchMock)
+    return () =>
+      fetchMock.mock.calls.map((call) => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)).voice)
+  }
+
+  const headttsAnswer = () =>
+    new Response(JSON.stringify({ audio: Buffer.from('wav').toString('base64') }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    })
+
+  it('asks HeadTTS for no voice when neither the request nor APP_TTS_VOICE names one', async () => {
+    vi.stubEnv('APP_TTS_UPSTREAM', 'headtts')
+    vi.stubEnv('APP_TTS_VOICE', '')
+    const voices = upstream(headttsAnswer)
+
+    expect((await speak('/api/tts/timed', { text: 'hello' })).status).toBe(200)
+    expect((await speak('/api/tts', { text: 'hello' })).status).toBe(200)
+    expect(voices()).toEqual([undefined, undefined])
+  })
+
+  it("asks for APP_TTS_VOICE when the request names none, and for the request's voice when it does", async () => {
+    vi.stubEnv('APP_TTS_UPSTREAM', 'headtts')
+    vi.stubEnv('APP_TTS_VOICE', 'am_fenrir')
+    const voices = upstream(headttsAnswer)
+
+    await speak('/api/tts/timed', { text: 'hello' })
+    await speak('/api/tts/timed', { text: 'hello', voice: 'af_heart' })
+    expect(voices()).toEqual(['am_fenrir', 'af_heart'])
+  })
+
+  it('still asks an OpenAI-style upstream for "default" when nothing names a voice', async () => {
+    vi.stubEnv('APP_TTS_UPSTREAM', 'cosyvoice')
+    vi.stubEnv('APP_TTS_VOICE', '')
+    const voices = upstream(() => audioResponse(['x']))
+
+    expect((await speak('/api/tts', { text: 'hello' })).status).toBe(200)
+    expect(voices()).toEqual(['default'])
+  })
+
+  it('reports in /api/health the voice it asks for when the request names none', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+    const healthVoice = async () =>
+      ((await (await createApp().request('/api/health')).json()) as { tts: { voice?: string } }).tts.voice
+
+    vi.stubEnv('APP_TTS_VOICE', '')
+    vi.stubEnv('APP_TTS_UPSTREAM', 'cosyvoice')
+    expect(await healthVoice()).toBe('default')
+    // HeadTTS is asked for none, and speaks with its own default
+    vi.stubEnv('APP_TTS_UPSTREAM', 'headtts')
+    expect(await healthVoice()).toBeUndefined()
+    vi.stubEnv('APP_TTS_VOICE', 'af_heart')
+    expect(await healthVoice()).toBe('af_heart')
+  })
+})

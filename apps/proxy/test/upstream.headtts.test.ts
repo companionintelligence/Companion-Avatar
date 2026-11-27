@@ -97,6 +97,38 @@ describe('headtts adapter', () => {
     expect(result.timings.visemes).toEqual(['kk', 'E'])
   })
 
+  /** The voice in each synthesize request, or undefined where a request named none. */
+  const voicesSent = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls.map((call) => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)).voice)
+
+  it('asks for no voice when neither the browser nor APP_TTS_VOICE names one, so HeadTTS uses its own', async () => {
+    // It used to send 'default'. HeadTTS loads each voice from a file and has none by that name, so it answered 422.
+    const fetchMock = vi.fn(async () => jsonResponse({ audio: AUDIO_B64 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = createHeadTtsAdapter(cfg())
+    await adapter.speakTimed({ text: 'hello' }, new AbortController().signal)
+    await adapter.speak({ text: 'hello', voice: '' }, new AbortController().signal)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({ input: 'hello', language: 'en-us', audioEncoding: 'wav' })
+    expect(voicesSent(fetchMock)).toEqual([undefined, undefined])
+    expect(adapter.defaultVoice).toBeUndefined()
+  })
+
+  it("asks for APP_TTS_VOICE when the browser names none, and for the browser's voice when it does", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ audio: AUDIO_B64 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const adapter = createHeadTtsAdapter(
+      resolveConfig({ APP_TTS_UPSTREAM: 'headtts', APP_TTS_URL: 'http://headtts:8080', APP_TTS_VOICE: 'am_fenrir' })
+    )
+    await adapter.speakTimed({ text: 'hello' }, new AbortController().signal)
+    await adapter.speakTimed({ text: 'hello', voice: 'af_heart' }, new AbortController().signal)
+
+    expect(voicesSent(fetchMock)).toEqual(['am_fenrir', 'af_heart'])
+  })
+
   it('exposes the same audio through the plain speak() path', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ audio: AUDIO_B64 })))
     const { body, contentType } = await createHeadTtsAdapter(cfg()).speak(

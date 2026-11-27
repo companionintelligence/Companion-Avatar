@@ -51,15 +51,18 @@ export interface TTSConfig {
   /**
    * The voice each engine speaks with when `voice` is empty. Engines name their voices their own way, so one
    * default cannot fit them all. The shared default was 'marius', a Pocket TTS voice, which the VITS engine took
-   * for a Piper id and found no model for (vitsVoice.ts). The BFF modes are still sent 'marius', as before, and
-   * their upstream decides what it means. Browser speech only looks for "male" or "female" in the name, finds
-   * neither, and uses the system voice.
+   * for a Piper id and found no model for (vitsVoice.ts).
+   *
+   * The BFF modes, 'remote' and 'headtts', have no default here. The browser then sends no voice, and the proxy
+   * uses its own APP_TTS_VOICE, or else its upstream's default. They used to be sent 'marius' too, which overrode
+   * APP_TTS_VOICE and which no Kokoro server has: on 2026-11-26 Speaches answered 422 to it, so nothing was said.
+   *
+   * Browser speech only looks for "male" or "female" in the name, finds neither in 'marius', and uses the system
+   * voice.
    */
   // A Map, not an object: `mode` comes from config.json too, and a lookup must not find 'constructor' on it.
   const ENGINE_DEFAULT_VOICES: ReadonlyMap<TTSMode, string> = new Map<TTSMode, string>([
     ['local', DEFAULT_VITS_VOICE],
-    ['remote', 'marius'],
-    ['headtts', 'marius'],
     ['browser', 'marius']
   ])
 
