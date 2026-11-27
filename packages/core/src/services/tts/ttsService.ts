@@ -229,9 +229,10 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
     []
   )
 
-  // Generate audio using local worker. Several sentences are in the worker at once, so each one takes only the
-  // answer with its own id. Any message from the worker shows it is still working; after LOCAL_TTS_SILENCE_MS
-  // with none, the sentence is given up so the queue can move on (vitsMessages.ts says why that can happen).
+  // Generate audio using local worker. Several sentences are in the worker at once (it speaks them one at a
+  // time), so each one takes only the answer with its own id. Any message from the worker shows it is still
+  // working; after LOCAL_TTS_SILENCE_MS with none, the sentence is given up so the queue can move on
+  // (vitsMessages.ts says why that can happen).
   const generateLocalAudio = useCallback(
     async (message: QueuedMessage) => {
       return new Promise<void>((resolve, reject) => {
@@ -689,11 +690,12 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       messageQueue.current.push(queuedMessage)
       console.log(`Queued message ${messageId}:`, cleanedText.substring(0, 50))
 
-      // For local and pocket modes, start generating all pending messages immediately
+      // For local and pocket modes, send every pending message now, so the next one is being made while one plays.
+      // Pocket's server gets them all at once; the local worker queues them and speaks one at a time.
       if (config.mode === 'local' || config.mode === 'pocket') {
         const allPendingMessages = messageQueue.current.filter((msg) => msg.status === 'pending')
         allPendingMessages.forEach((message) => {
-          generateAudioForMessage(message) // Don't await - let them generate in parallel
+          generateAudioForMessage(message) // Don't await
         })
       }
 

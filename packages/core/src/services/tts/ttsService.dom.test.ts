@@ -483,6 +483,53 @@ describe('local TTS: every sentence ends, whatever the worker does', () => {
     expect(vi.mocked(console.warn).mock.calls.flat().join(' ')).toContain(`the worker sent nothing for ${LOCAL_TTS_SILENCE_MS / 1000} s`)
   })
 
+  it('gives up the sentences waiting behind one that never ends, and speaks the next reply with a new worker', async () => {
+    // The worker speaks one sentence at a time, so behind a predict() that never settles it answers nothing at all.
+    MockWorker.replies = () => []
+    const { result, onSpeechStart } = await speakAll(['first sentence', 'second sentence', 'third sentence'])
+    await advance(LOCAL_TTS_SILENCE_MS - 1_000)
+    expect(result.current.actions.getQueueStatus().queueLength).toBe(3)
+    await advance(2_000)
+    expect(result.current.actions.getQueueStatus().queueLength).toBe(0)
+    expect(MockWorker.instances[0].terminated).toBe(true)
+    expect(MockWorker.instances[0].listenerCount()).toBe(0)
+
+    MockWorker.replies = (request) => [{ after: 0, data: { id: request.id, audio: audio() } }]
+    await act(async () => {
+      await result.current.actions.speak('the next reply')
+    })
+    await advance(500)
+    expect(MockWorker.instances).toHaveLength(2)
+    expect(spokenTexts(onSpeechStart)).toEqual(['the next reply'])
+  })
+
+  it('keeps the sentences behind a slow first download waiting while it reports progress, then plays each in turn', async () => {
+    // One at a time: the first sentence downloads the voice for 200 s and reports progress every 30 s. The others
+    // hear nothing of their own until it is done, then follow a second apart.
+    MockWorker.replies = (request) =>
+      request.id === 0
+        ? [
+            ...[1, 2, 3, 4, 5, 6].map((n) => ({ after: n * 30_000, data: { id: 0, progress: { loaded: n, total: 7 } } })),
+            { after: 200_000, data: { id: 0, audio: audio() } }
+          ]
+        : [{ after: 200_000 + request.id * 1_000, data: { id: request.id, audio: audio() } }]
+    const { result, onSpeechStart } = await speakAll(['first sentence', 'second sentence', 'third sentence'])
+    await advance(203_000)
+    expect(result.current.actions.getQueueStatus().messages.map((message) => message.status)).toEqual([
+      'playing',
+      'ready',
+      'ready'
+    ])
+    // The mocked sources never end on their own: end each one, and the next sentence plays.
+    for (const index of [0, 1]) {
+      await act(async () => {
+        MockAudioContext.startedSources[index].onended?.()
+      })
+      await advance(200)
+    }
+    expect(spokenTexts(onSpeechStart)).toEqual(['first sentence', 'second sentence', 'third sentence'])
+  })
+
   it('keeps waiting while the worker reports download progress', async () => {
     // A slow first download: a progress note every 30 s for three minutes, then the audio.
     MockWorker.replies = (request) => [

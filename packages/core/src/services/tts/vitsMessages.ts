@@ -3,7 +3,8 @@
  * can import it without the page pulling in vits-web.
  *
  * The page posts one request per sentence. The worker answers each request exactly once, with the audio or an
- * error. Before that it may send progress notes while it downloads the voice.
+ * error. Before that it may send progress notes while it downloads the voice. It speaks one request at a time, in
+ * the order they came (vits.worker.ts says why), but the page matches answers by id and does not rely on that.
  */
 
 /** One sentence to speak. `voice` is a Piper voice id (vitsVoice.ts). */
@@ -31,5 +32,9 @@ export const PROGRESS_INTERVAL_MS = 1_000
  * load leaves predict() pending forever (measured 2026-11-26: no answer in 240 s). Downloads of the voice send
  * progress, so the limit covers only the quiet ones: the phonemizer's 18.7 MB and onnxruntime's 10.6 MB .wasm,
  * which take under 60 s each above about 2.5 Mbit/s.
+ *
+ * Any message from the worker counts, whichever request it is for. The requests waiting behind the one being
+ * spoken get nothing of their own until their turn, so the first sentence's download progress is what keeps
+ * them waiting. And when a predict() stops for good, they go quiet with it, and the page gives them all up.
  */
 export const LOCAL_TTS_SILENCE_MS = 60_000
