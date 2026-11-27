@@ -22,6 +22,13 @@ The proxy reads its upstream from env at runtime: `APP_UPSTREAM` (`ollama` | `op
 `APP_OPENAI_URL` / `APP_OPENAI_API_KEY` / `APP_OPENAI_MODEL`, `APP_AIAVATARKIT_URL` / `APP_AIAVATARKIT_TOKEN`,
 `PORT` (8787). The AIAvatarKit and CC0 avatar notes are in [integrations.md](integrations.md).
 
+Speech for the `remote` and `headtts` modes goes to `APP_TTS_UPSTREAM` (`cosyvoice`, any server with an
+OpenAI-style `/v1/audio/speech`, or `headtts`) at `APP_TTS_URL`, with `APP_TTS_MODEL` and `APP_TTS_VOICE`. The
+browser names a voice only when one is configured for it, so `APP_TTS_VOICE` on the proxy picks the voice. If that
+is unset too, `headtts` asks HeadTTS for none, which then uses its own default voice, and `cosyvoice` sends
+`default`, which a server may not have: Speaches (Kokoro) answers 422 to it. Set `APP_TTS_VOICE` to one of your
+server's voices.
+
 `APP_ALLOWED_ORIGINS` (comma-separated) allows browser origins to call the proxy
 **cross-origin**. Leave it unset for the container and dev-server deployments, which are
 same-origin and need no CORS headers at all. Set it when the SPA is served from a

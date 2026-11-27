@@ -22,6 +22,11 @@ export interface TtsRequest {
 export interface TtsAdapter {
   readonly name: string
   /**
+   * The voice this adapter asks for when neither the browser nor APP_TTS_VOICE names one. Undefined when it then
+   * asks for none, and the upstream speaks with its own default.
+   */
+  readonly defaultVoice?: string
+  /**
    * Stream synthesized audio from the upstream. Honors `signal` for cancellation
    * (client disconnect / barge-in). Throws on a non-ok upstream or transport error.
    */
@@ -60,9 +65,17 @@ export function contentTypeForFormat(format: string | undefined): string {
  * There is no CosyVoice2 server in CI, so the tests mock `fetch`; point
  * `APP_TTS_URL` at a real server to exercise this end to end.
  */
+/**
+ * The voice an OpenAI-style server is sent when neither the browser nor APP_TTS_VOICE names one. That API needs a
+ * voice, and no one name is valid on every server: Speaches (Kokoro) answers 422 to this one. Set APP_TTS_VOICE
+ * to a voice of the server you run.
+ */
+export const COSYVOICE_DEFAULT_VOICE = 'default'
+
 export function createCosyVoiceAdapter(cfg: ResolvedConfig): TtsAdapter {
   return {
     name: 'cosyvoice',
+    defaultVoice: COSYVOICE_DEFAULT_VOICE,
 
     async speak(req: TtsRequest, signal: AbortSignal): Promise<TtsAudioStream> {
       const format = req.format || 'mp3'
@@ -74,7 +87,7 @@ export function createCosyVoiceAdapter(cfg: ResolvedConfig): TtsAdapter {
           body: JSON.stringify({
             model: cfg.ttsModel,
             input: req.text,
-            voice: req.voice || cfg.ttsVoice,
+            voice: req.voice || cfg.ttsVoice || COSYVOICE_DEFAULT_VOICE,
             response_format: format,
             stream: true
           }),

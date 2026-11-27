@@ -43,6 +43,10 @@ export interface ResolvedConfig {
    */
   ttsUrl: string
   ttsModel: string
+  /**
+   * The voice to ask the TTS upstream for when the browser names none (env APP_TTS_VOICE). Empty when that is
+   * unset or blank: each adapter then falls back on its own (`defaultVoice` in upstreams/cosyvoice.ts).
+   */
   ttsVoice: string
   sttUrl: string
   sttModel: string
@@ -194,7 +198,7 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): ResolvedCon
     // with APP_TTS_URL for a different host/port.
     ttsUrl: stripTrailingSlash(env.APP_TTS_URL ?? 'http://host.docker.internal:8880'),
     ttsModel: env.APP_TTS_MODEL ?? 'cosyvoice2-0.5b',
-    ttsVoice: env.APP_TTS_VOICE ?? 'default',
+    ttsVoice: (env.APP_TTS_VOICE ?? '').trim(),
     sttUrl: stripTrailingSlash(env.APP_STT_URL ?? 'http://host.docker.internal:8081'),
     sttModel: env.APP_STT_MODEL ?? 'Systran/faster-whisper-small',
     ciServerApiKey: env.APP_CI_SERVER_API_KEY ?? '',

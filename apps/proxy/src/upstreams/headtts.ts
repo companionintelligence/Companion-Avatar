@@ -91,13 +91,17 @@ export function createHeadTtsAdapter(cfg: ResolvedConfig): TimedTtsAdapter {
   const base = cfg.ttsUrl
 
   const synthesize = async (req: TtsRequest, signal: AbortSignal): Promise<Response> => {
+    // With no voice from the browser or APP_TTS_VOICE, ask for none: HeadTTS then speaks with its own default
+    // (`tts.defaults.voice`, af_bella as shipped). It loads each voice from a file, so a name it has no file for,
+    // such as the 'default' this used to send, gets a 422 and no audio.
+    const voice = req.voice || cfg.ttsVoice
     try {
       return await fetch(`${base}/v1/synthesize`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           input: req.text,
-          voice: req.voice || cfg.ttsVoice,
+          ...(voice ? { voice } : {}),
           language: 'en-us',
           audioEncoding: req.format === 'wav' ? 'wav' : 'wav'
         }),

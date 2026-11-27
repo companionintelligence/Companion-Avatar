@@ -12,10 +12,16 @@ describe('voiceFor', () => {
     expect(voiceFor({ mode: 'local', voice: '' })).toBe(DEFAULT_VITS_VOICE)
   })
 
-  it('still sends the BFF modes, and browser speech, marius by default, as before', () => {
-    for (const mode of ['remote', 'headtts', 'browser'] as const) {
-      expect(voiceFor({ mode, voice: '' }), mode).toBe('marius')
+  it('names no voice for the BFF modes by default, so the proxy picks it', () => {
+    // They were sent 'marius', which overrode the proxy's APP_TTS_VOICE and which no Kokoro server has.
+    for (const mode of ['remote', 'headtts'] as const) {
+      expect(voiceFor({ mode, voice: '' }), mode).toBe('')
+      expect(voiceFor({ mode, voice: '   ' }), mode).toBe('')
     }
+  })
+
+  it('still gives browser speech marius by default, as before', () => {
+    expect(voiceFor({ mode: 'browser', voice: '' })).toBe('marius')
   })
 
   it('uses a configured voice for every engine, as given', () => {

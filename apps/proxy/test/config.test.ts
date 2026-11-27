@@ -32,7 +32,14 @@ describe('resolveConfig', () => {
     expect(cfg.ttsUpstream).toBe('cosyvoice')
     expect(cfg.ttsUrl).toBe('http://host.docker.internal:8880')
     expect(cfg.ttsModel).toBe('cosyvoice2-0.5b')
-    expect(cfg.ttsVoice).toBe('default')
+    // No voice of its own: each adapter falls back on its upstream's (upstreams/cosyvoice.ts, upstreams/headtts.ts).
+    expect(cfg.ttsVoice).toBe('')
+  })
+
+  it('treats a blank APP_TTS_VOICE as unset, and trims one that is set', () => {
+    expect(resolveConfig({ APP_TTS_VOICE: '' }).ttsVoice).toBe('')
+    expect(resolveConfig({ APP_TTS_VOICE: '   ' }).ttsVoice).toBe('')
+    expect(resolveConfig({ APP_TTS_VOICE: ' af_heart ' }).ttsVoice).toBe('af_heart')
   })
 
   it('overrides TTS settings from env and strips the trailing slash', () => {

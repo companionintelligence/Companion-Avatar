@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { resolveConfig } from '../src/config.js'
 import {
+  COSYVOICE_DEFAULT_VOICE,
   contentTypeForFormat,
   createCosyVoiceAdapter,
   selectTtsUpstream
@@ -69,6 +70,23 @@ describe('cosyvoice adapter', () => {
 
     const sent = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
     expect(sent.voice).toBe('javert')
+  })
+
+  it('sends "default" when neither the browser nor APP_TTS_VOICE names a voice, as before', async () => {
+    // The OpenAI speech API needs a voice, so this adapter keeps its old fallback.
+    const fetchMock = vi.fn(async () => audioResponse(['x']))
+    vi.stubGlobal('fetch', fetchMock)
+
+    for (const env of [{}, { APP_TTS_VOICE: '' }, { APP_TTS_VOICE: '  ' }]) {
+      await createCosyVoiceAdapter(resolveConfig(env)).speak({ text: 'hi' }, new AbortController().signal)
+    }
+
+    const voices = fetchMock.mock.calls.map(
+      (call) => JSON.parse(String((call as unknown as [string, RequestInit])[1].body)).voice
+    )
+    expect(COSYVOICE_DEFAULT_VOICE).toBe('default')
+    expect(voices).toEqual(['default', 'default', 'default'])
+    expect(createCosyVoiceAdapter(resolveConfig({})).defaultVoice).toBe('default')
   })
 
   it('derives content-type from the requested format when the upstream is generic', async () => {

@@ -317,9 +317,10 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       // but the default is /api/tts, prefixed with VITE_API_BASE in a shell build.
       const url = config.url && config.url.startsWith('/') ? apiUrl(config.url) : apiUrl('/api/tts')
 
+      // No voice unless one is configured (voiceFor), so the proxy's own APP_TTS_VOICE decides.
       const requestBody = {
         text: message.text,
-        voice,
+        ...(voice ? { voice } : {}),
         format: 'mp3'
       }
 
@@ -355,7 +356,8 @@ export const useTTSService = (options: TTSServiceOptions = {}) => {
       const response = await fetch(apiUrl('/api/tts/timed'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: message.text, voice, format: 'wav' })
+        // As in remote mode: no voice unless one is configured, so the proxy's APP_TTS_VOICE decides.
+        body: JSON.stringify({ text: message.text, ...(voice ? { voice } : {}), format: 'wav' })
       })
 
       if (response.status === 501) {
